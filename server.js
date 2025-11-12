@@ -505,8 +505,36 @@ app.post('/v1/interrupt', (req, res) => {
     const context = activeRequests.get(id);
     if (context) {
         console.log(`[Interrupt] Received stop signal for ID: ${id}`);
-        context.abortController.abort(); // 触发中止
-        // The actual response handling is done in the handleChatCompletion's error handler
+        
+        // 新增：立即向客户端发送流式中止信号
+        if (context.res && !context.res.headersSent) {
+            // 如果响应头还没发送，发送标准JSON响应
+            try {
+                context.res.status(200).json({
+                    choices: [{
+                        index: 0,
+                        message: { role: 'assistant', content: '请求已被用户中止' },
+                        finish_reason: 'stop'
+                    }]
+                });
+            } catch (e) {
+                console.error(`[Interrupt] Error sending initial response for ${id}:`, e.message);
+            }
+        } else if (context.res && !context.res.writableEnded) {
+            // 如果是流式响应且还未结束，发送[DONE]信号并关闭流
+            try {
+                context.res.write('data: [DONE]\n\n');
+                context.res.end();
+                console.log(`[Interrupt] Sent [DONE] signal and closed stream for ID: ${id}`);
+            } catch (e) {
+                console.error(`[Interrupt] Error closing stream for ${id}:`, e.message);
+            }
+        }
+        
+        // 触发中止信号（这会中断后续的fetch请求）
+        context.abortController.abort();
+        
+        // 向中断请求的发起者返回成功响应
         res.status(200).json({ status: 'success', message: `Interrupt signal sent for request ${id}.` });
     } else {
         console.log(`[Interrupt] Received stop signal for non-existent or completed ID: ${id}`);

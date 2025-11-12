@@ -135,8 +135,7 @@ async function copyServerLogToClipboard() {
         return;
     }
 
-    try {
-        await navigator.clipboard.writeText(logContent);
+    const showSuccess = () => {
         showMessage('日志内容已复制到剪贴板！', 'success');
         if (serverLogStatusSpan) {
             serverLogStatusSpan.textContent = '日志已复制!';
@@ -147,12 +146,46 @@ async function copyServerLogToClipboard() {
                 }
             }, 3000);
         }
-    } catch (err) {
-        console.error('无法复制日志: ', err);
+    };
+
+    const showError = (err, type = '') => {
+        console.error(`无法复制日志${type}: `, err);
         showMessage('无法自动复制日志。请手动复制。', 'error');
         if (serverLogStatusSpan) {
             serverLogStatusSpan.textContent = '复制失败';
             serverLogStatusSpan.className = 'status-message error';
         }
+    };
+
+    // Modern clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(logContent);
+            showSuccess();
+        } catch (err) {
+            showError(err);
+        }
+        return;
+    }
+
+    // Fallback for non-secure contexts
+    const textArea = document.createElement('textarea');
+    textArea.value = logContent;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+            showSuccess();
+        } else {
+            throw new Error('document.execCommand failed');
+        }
+    } catch (err) {
+        showError(err, ' (fallback)');
+    } finally {
+        document.body.removeChild(textArea);
     }
 }
