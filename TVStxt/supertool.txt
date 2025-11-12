@@ -179,3 +179,213 @@ tool_name:「始」Randomness「末」,
 command:「始」destroyDeck「末」,
 deckId:「始」由createDeck返回的ID「末」 // 必需
 
+好的，这是去除所有Markdown格式后的纯文本内容，方便您直接保存为 .txt 文件。
+
+五. 新增工具插件 (2025-10-26)
+
+1. QwenImageGen (通义千问图片生成器)
+
+支持文生图和图生图。
+
+文生图模式:
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」QwenImageGen「末」,
+command:「始」GenerateImage「末」,
+prompt:「始」(必需) 图片生成提示词「末」,
+image_size:「始」(可选) 图片分辨率，如 1328x1328，支持 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3「末」,
+cfg:「始」(可选) 范围 0.1-20，控制与提示词匹配度，推荐4.0「末」
+<<<[END_TOOL_REQUEST]>>>
+
+图生图模式:
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」QwenImageGen「末」,
+command:「始」EditImage「末」,
+prompt:「始」(必需) 修改指导提示词「末」,
+image:「始」(必需) 图片URL或file://路径，支持最多3张参考图(image, image2, image3)「末」
+<<<[END_TOOL_REQUEST]>>>
+
+2. FlashDeepSearch (深度联网研究工具)
+
+自动生成多维度关键词并发搜索，整合为研究报告。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」FlashDeepSearch「末」,
+SearchContent:「始」(必需) 研究主题描述「末」,
+SearchBroadness:「始」(必需) 搜索广度，范围 5-20，数字越大搜索越全面「末」
+<<<[END_TOOL_REQUEST]>>>
+
+3. ServerPowerShellExecutor (PowerShell 脚本执行器)
+
+支持同步/异步执行，可管理员权限运行。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」ServerPowerShellExecutor「末」,
+command:「始」(必需) PowerShell 命令字符串「末」,
+executionType:「始」(可选) 'blocking'(默认) 或 'background'「末」,
+requireAdmin:「始」(可选) 需要管理员权限时提供验证码，当前为 233500「末」
+<<<[END_TOOL_REQUEST]>>>
+
+支持批量命令: command1, command2, command3...
+
+4. LightMemo (轻量级快速回忆)
+
+调用此工具在RAG知识库（日记）中进行轻量级搜索。
+参数:
+- query (字符串, 必需): 用于向量搜索的查询内容。
+- maid (字符串, 必需): AI自己的署名，用于在非全局搜索模式下定位相关日记本。
+- k (数字, 可选, 默认5): 返回的结果数量。
+- rerank (布尔, 可选, 默认false): 是否启用Rerank。如果为true，将以2倍k值搜索，然后重排并返回k个结果。
+- search_all_knowledge_bases (布尔, 可选, 默认false): 是否搜索所有知识库。如果为false，则先根据maid署名找到相关日记本再进行搜索；如果为true，则直接在所有（未被屏蔽的）日记本中搜索。
+调用格式示例:
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」LightMemo「末」,
+maid:「始」Nova「末」,
+query:「始」关于上次项目会议的讨论内容「末」,
+k:「始」3「末」,
+rerank:「始」true「末」,
+search_all_knowledge_bases:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+
+5. ChromeControl (Chrome 浏览器控制器)
+
+向浏览器发送操作指令。
+
+输入文本:
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」ChromeControl「末」,
+command:「始」type「末」,
+target:「始」(必需) 输入框标题或标识符「末」,
+text:「始」(必需) 要输入的文本内容「末」
+<<<[END_TOOL_REQUEST]>>>
+
+点击元素:
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」ChromeControl「末」,
+command:「始」click「末」,
+target:「始」(必需) 按钮或链接的标题或URL「末」
+<<<[END_TOOL_REQUEST]>>>
+
+打开URL:
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」ChromeControl「末」,
+command:「始」open_url「末」,
+url:「始」(必需) 完整URL地址「末」
+<<<[END_TOOL_REQUEST]>>>
+
+6. DailyNoteEditor (日记内容编辑器)
+
+编辑日记文件中的特定内容。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」DailyNoteEditor「末」,
+maid:「始」(必需) 角色日记本名称，如"小克"、"公共"「末」,
+target:「始」(必需) 需要查找和替换的旧内容(至少15字符)「末」,
+replace:「始」(必需) 新内容「末」,
+archery:「始」(可选) "no_reply" 表示无需回执，推荐使用「末」
+<<<[END_TOOL_REQUEST]>>>
+
+7. CodeSearcher (高性能代码搜索器)
+
+Rust编写，支持正则表达式。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」CodeSearcher「末」,
+query:「始」(必需) 搜索关键词、代码片段或正则表达式「末」,
+search_path:「始」(可选) 相对路径，默认搜索整个项目「末」,
+case_sensitive:「始」(可选) 是否区分大小写，默认false「末」,
+whole_word:「始」(可选) 是否全词匹配，默认false「末」,
+context_lines:「始」(可选) 匹配行前后的上下文行数，默认2「末」
+<<<[END_TOOL_REQUEST]>>>
+
+8. AnimeFinder (以图找番)
+
+通过图片URL或本地文件路径查找对应动漫信息。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」AnimeFinder「末」,
+imageUrl:「始」(必需) 图片URL (支持 http, https, file 协议)「末」
+<<<[END_TOOL_REQUEST]>>>
+
+9. WaitingForUrReply (等待用户回复)
+
+在工具调用中征求用户意见，等待输入后继续。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」WaitingForUrReply「末」,
+prompt:「始」(可选) 显示给用户的提示信息「末」,
+title:「始」(可选) 弹出窗口标题，默认"等待用户回复"「末」,
+placeholder:「始」(可选) 输入框默认内容(会被全选)「末」,
+option01:「始」(可选) 预设选项1，用户可按数字键1-9快速选择(最多option01-option09)「末」,
+timeout:「始」(可选) 超时时间(秒)，默认1200「末」
+<<<[END_TOOL_REQUEST]>>>
+
+10. LocalSearchController (本地文件秒搜)
+
+基于Everything引擎，在整台计算机上快速搜索文件。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」LocalSearchController「末」,
+command:「始」search「末」,
+query:「始」(必需) 搜索关键词(支持Everything高级语法)「末」,
+maxResults:「始」(可选) 返回最大结果数，默认100「末」
+<<<[END_TOOL_REQUEST]>>>
+
+Everything 语法示例: "path:D:\\videos\\ *.mp4 size:>1gb", "ext:txt dm:today"
+
+11. MediaShot (多媒体截取工具)
+
+从视频中捕获指定时间点的帧截图。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」MediaShot「末」,
+command:「始」CaptureFrame「末」,
+videoPath:「始」(必需) 视频文件完整路径「末」,
+timestampMs:「始」(必需) 截图时间点(毫秒)「末」,
+outputPath:「始」(可选) 输出文件路径「末」,
+quality:「始」(可选) 图片质量(1-100)「末」,
+format:「始」(可选) jpg或png「末」
+<<<[END_TOOL_REQUEST]>>>
+
+12. MusicController (音乐播放器控制器)
+
+在播放列表中搜索并播放歌曲。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」MusicController「末」,
+command:「始」playSong「末」,
+songname:「始」(必需) 歌曲标题或部分标题，支持模糊匹配「末」
+<<<[END_TOOL_REQUEST]>>>
+
+13. VCPAlarm (VCP闹钟插件)
+
+通过后台进程实现闹钟功能。
+
+<<<[TOOL_REQUEST]>>>
+maid:「始」你的署名「末」,
+tool_name:「始」VCPAlarm「末」,
+time_description:「始」(必需) 闹钟时间描述，支持"晚上10点30分"、"15分钟后"等自然语言「末」
+<<<[END_TOOL_REQUEST]>>>
+
+注意事项:
+1. FlashDeepSearch 依赖外部 API，如遇 400 错误可能是配额问题
+2. ChromeControl 需要安装配套的 Chrome 扩展程序
+3. LocalSearchController 的搜索结果可直接用于 FileOperator 插件

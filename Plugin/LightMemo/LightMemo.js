@@ -1,4 +1,4 @@
-// Plugin/LightMemoPlugin/LightMemo.js
+﻿// Plugin/LightMemoPlugin/LightMemo.js
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
@@ -593,4 +593,4 @@ _tokenize(text) {
     }
 }
 
-module.exports = new LightMemoPlugin();
+module.exports = LightMemoPlugin;

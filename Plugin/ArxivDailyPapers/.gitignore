@@ -1,1 +1,4 @@
 arxiv_papers.json
+**/config.env
+*.env
+.env.*

@@ -1,2 +1,5 @@
 plugin-manifest.json
 plugin-manifest.json.bak
+**/config.env
+*.env
+.env.*

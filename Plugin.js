@@ -1,4 +1,4 @@
-// Plugin.js
+﻿// Plugin.js
 const fs = require('fs').promises;
 const path = require('path');
 const { spawn } = require('child_process');
@@ -399,6 +399,9 @@ class PluginManager {
                         if ((isPreprocessor || isService) && manifest.entryPoint.script && manifest.communication?.protocol === 'direct') {
                             try {
                                 const scriptPath = path.join(pluginPath, manifest.entryPoint.script);
+                                delete require.cache[require.resolve(scriptPath)];
+                                const module = require(scriptPath);
+                                delete require.cache[require.resolve(scriptPath)];
                                 const module = require(scriptPath);
                                 
                                 modulesToInitialize.push({ manifest, module });

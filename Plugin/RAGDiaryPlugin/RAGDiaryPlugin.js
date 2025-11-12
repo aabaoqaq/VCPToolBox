@@ -1,4 +1,4 @@
-// Plugin/MessagePreprocessor/RAGDiaryPlugin/index.js
+﻿// Plugin/MessagePreprocessor/RAGDiaryPlugin/index.js
 
 const axios = require('axios');
 const fs = require('fs').promises;
@@ -241,8 +241,9 @@ class RAGDiaryPlugin {
         this.enhancedVectorCache = {}; // <--- 新增：用于存储增强向量的缓存
         this.timeParser = new TimeExpressionParser('zh-CN'); // 实例化时间解析器
         this.semanticGroups = new SemanticGroupManager(this); // 实例化语义组管理器
-        this.metaThinkingChains = {}; // 新增：元思考链配置
+        this.metaThinkingChains = { chains: {} }; // 新增：元思考链配置（先设置默认值）
         this.metaChainThemeVectors = {}; // 新增：元思考链主题向量缓存
+        this.configLoaded = false; // 标记配置是否加载完成
         this.loadConfig();
     }
 
@@ -353,6 +354,10 @@ class RAGDiaryPlugin {
         } catch (error) {
             console.error('[RAGDiaryPlugin] 加载或构建元思考链主题向量时发生错误:', error);
         }
+
+        // 标记配置已加载完成
+        this.configLoaded = true;
+        console.log('[RAGDiaryPlugin] 配置加载完成');
     }
 
     async _buildAndSaveCache(configHash, cachePath) {
@@ -807,7 +812,12 @@ class RAGDiaryPlugin {
                 processedContent = processedContent.replace(placeholder, metaResult);
                 console.log(`[RAGDiaryPlugin] VCP元思考链处理完成`);
             } catch (error) {
-                console.error(`[RAGDiaryPlugin] 处理VCP元思考链时发生错误:`, error);
+                console.error(`[RAGDiaryPlugin] 处理VCP元思考链时发生错误:`, {
+                    message: error.message,
+                    stack: error.stack,
+                    code: error.code,
+                    name: error.name
+                });
                 processedContent = processedContent.replace(
                     placeholder,
                     `[VCP元思考链处理失败: ${error.message}]`
@@ -1047,6 +1057,20 @@ class RAGDiaryPlugin {
      */
     async _processMetaThinkingChain(chainName, queryVector, userContent, combinedQueryForDisplay, kSequence, useGroup, isAutoMode = false, autoThreshold = 0.65) {
         
+        // 等待配置加载完成
+        if (!this.configLoaded) {
+            console.warn('[RAGDiaryPlugin][MetaThinking] 配置尚未加载完成，等待中...');
+            // 简单的轮询等待，最多等待5秒
+            for (let i = 0; i < 50; i++) {
+                if (this.configLoaded) break;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            if (!this.configLoaded) {
+                console.error('[RAGDiaryPlugin][MetaThinking] 配置加载超时');
+                return '[错误: 元思考链配置加载超时]';
+            }
+        }
+        
         // 如果是自动模式，需要先决定使用哪个 chain
         if (isAutoMode) {
             let bestChain = 'default';
@@ -1054,6 +1078,18 @@ class RAGDiaryPlugin {
 
             for (const [themeName, themeVector] of Object.entries(this.metaChainThemeVectors)) {
                 const similarity = this.cosineSimilarity(queryVector, themeVector);
+
+        // 检查配置是否已加载
+        if (!this.metaThinkingChains || !this.metaThinkingChains.chains) {
+            console.error(`[RAGDiaryPlugin][MetaThinking] 元思考链配置未加载`);
+            return `[错误: 元思考链配置未加载，请等待系统初始化完成]`;
+        }
+
+        // 安全检查：确保元思考链配置已加载
+        if (!this.metaThinkingChains || !this.metaThinkingChains.chains) {
+            console.error(`[RAGDiaryPlugin][MetaThinking] 元思考链配置未加载`);
+            return `[错误: 元思考链配置未加载，请等待系统初始化完成]`;
+        }
                 if (similarity > maxSimilarity) {
                     maxSimilarity = similarity;
                     bestChain = themeName;

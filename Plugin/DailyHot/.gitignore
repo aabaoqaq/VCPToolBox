@@ -1,1 +1,4 @@
 dailyhot_cache.md
+**/config.env
+*.env
+.env.*

@@ -23,7 +23,6 @@ if (WHITELIST_EMBEDDING_MODELS.length > 0) {
 // 中间件，用于检查请求是否适用于此特殊路由
 router.use((req, res, next) => {
     // 对于非 POST 请求或没有请求体的请求，立即跳过此路由。
-    // 这可以防止对管理面板的 GET 请求等造成崩溃。
     if (req.method !== 'POST' || !req.body) {
         return next('router');
     }
@@ -31,9 +30,33 @@ router.use((req, res, next) => {
     // 对于 POST 请求，检查 model 属性。
     const model = req.body.model;
 
+    // 🆕 添加详细调试日志
+    if (DEBUG_MODE && model) {
+        console.log(`\n========== [SpecialRouter 调试] ==========`);
+        console.log(`收到的模型名: "${model}"`);
+        console.log(`模型名长度: ${model.length} 字符`);
+        console.log(`是否包含逗号: ${model.includes(',') ? '是 ⚠️' : '否'}`);
+        console.log(`白名单中的模型:`);
+        WHITELIST_EMBEDDING_MODELS.forEach((m, i) => {
+            console.log(`  [${i}] "${m}" (长度: ${m.length})`);
+        });
+        console.log(`是否在白名单中: ${WHITELIST_EMBEDDING_MODELS.includes(model) ? '是 ✅' : '否 ❌'}`);
+        console.log(`==========================================\n`);
+    }
+
     // 如果没有 model，跳过此路由。
     if (!model) {
         return next('router');
+    }
+
+    // 🆕 检测非法模型名（包含逗号）
+    if (model.includes(',')) {
+        console.error(`\n❌❌❌ [SpecialRouter 错误] ❌❌❌`);
+        console.error(`检测到非法的模型名（包含逗号）: "${model}"`);
+        console.error(`这说明客户端发送的请求有问题！`);
+        console.error(`请求来源: ${req.headers['user-agent'] || '未知'}`);
+        console.error(`请求路径: ${req.originalUrl}`);
+        console.error(`❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌\n`);
     }
 
     // 如果模型在白名单中，则在此路由中处理。
@@ -42,9 +65,15 @@ router.use((req, res, next) => {
         return next(); // 继续到此路由中的下一个处理程序
     }
 
+    // 🆕 记录被跳过的请求
+    if (DEBUG_MODE) {
+        console.log(`[SpecialRouter] 模型 "${model}" 不在白名单中，跳过特殊路由，交给常规处理。`);
+    }
+
     // 如果模型不在任何白名单中，跳过此路由。
     return next('router');
 });
+
 
 
 // 处理图像模型
