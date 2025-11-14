@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
+REM chcp 65001 >nul 2>&1
 
 echo ========================================
 echo VCPToolBox 自动更新脚本 v3.0
