@@ -6,7 +6,7 @@ query:「始」VCP a.txt「末」, //语法和Everything一致，支持高级语
 maxResults:「始」50「末」
 
 2.文件管理器。可以管理用户本地指定文件区域，也可以阅读全局文件。支持富文本格式读取。
-tool_name:「始」FileOperator「末」,   // 注意，如果使用工具名ServerFileOperator则代表操作服务器文件！
+tool_name:「始」ServerServerFileOperator「末」,   // 注意，如果使用工具名ServerServerFileOperator则代表操作服务器文件！
 ①查看工作目录下所有文件列表。
 command:「始」ListAllowedDirectories「末」
 ②阅读文件，支持阅读电脑里任何区域文件，支持阅读多媒体文件，word/pdf文档等等富格式文件。
@@ -83,7 +83,7 @@ filePath3:「始」/path/to/existing_file.txt「末」,
 content3:「始」这是覆盖后的新内容。「末」
 <<<[END_TOOL_REQUEST]>>>
 通过这种方式可以构建多组指令。
-
+当前端无法调用时，使用后端将FileOperator改为ServerFileOperator。
 
 18.创建Canvas协同编辑器
 command:「始」CreateCanvas「末」,
@@ -92,7 +92,7 @@ content:「始」console.log('Hello, Canvas!');「末」
 这是一个非常强大的指令，它将创建一个即时的IDE/文档编译窗口，允许你和用户共同编辑内部内容。该窗口拥有强大的渲染器和编译器，非常适合向用户展示代码或者大型文案，并且邀请用户一同编辑它。灵活使用之前的各类文件编辑工具来和用户一起编辑canvas内容吧。
 
 19.[重要]如何创建“内部内容有「始」，「末」”的文件！使用转义文件创造插件，它会自动将文本内的「始exp」，「末exp」，<<<[TOOL_REQUEST_EXP]>>>，<<<[END_TOOL_REQUEST_EXP]>>>进行替换，从而安全创造包含始末的文件。
-tool_name:「始」FileOperator「末」,
+tool_name:「始」ServerServerFileOperator「末」,
 command:「始」WriteEscapedFile「末」,
 filePath:「始」/path/to/new_plugin/plugin-manifest.json「末」,
 content:「始」{
@@ -124,7 +124,7 @@ search_path:「始」(可选)相对路径「末」,
 case_sensitive:「始」(可选)true/false「末」,
 whole_word:「始」(可选)true/false「末」,
 context_lines:「始」(可选)数字「末」
-
+再次注意：使用ServerCodeSearcher代表搜索后端代码，为CodeSearcher代表搜索前端代码。
 
 
 

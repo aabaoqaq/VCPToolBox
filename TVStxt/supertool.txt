@@ -93,7 +93,7 @@ negative_prompt:「始」(可选) “额外”的负面提示词，将与用户�
 width:「始」(可选) 生成图像的宽度，默认使用用户配置的值1024「末」,
 height:「始」(可选) 生成图像的高度，默认使用用户配置的值1024「末」
 
-7.千问生图，国产新星，文字排版能力不输豆包哦
+7.(不可用)千问生图，国产新星，文字排版能力不输豆包哦
 tool_name:「始」QwenImageGen「末」,
 command:「始」GenerateImage「末」,
 prompt:「始」(必需) 用于图片生成的详细提示词。「末」,
@@ -170,14 +170,19 @@ tool_name:「始」AgentMessage「末」,
 message:「始」当主人不在时用来向莱恩主人的设备发送通知消息。「末」
 
 3.深度回忆插件，该插件用于直接回忆之前的聊天历史文件(自动跳过当前窗口上下文)
-tool_name:「始」DeepMemo「末」,
-maid:「始」你的名字「末」, //该插件中这是必须字段
-keyword：「始」搜索关键词「末」, //语法示例详见下方说明。
-window_size：「始」匹配深度「末」 //非必须参数，可不填。可选1-10，数字越小越精准，推荐不用写这个参数。因为这样会由插件动态评估更加可靠。
+调用此工具进行深度回忆，以获取与特定关键词相关的历史对话上下文。
 
-DeepMemo检索词语法：
-# 关键词使用,隔开。
-# 支持以下高级语法:
+**重要提示：**
+- 本工具会根据关键词在指定女仆的记忆库中进行搜索。
+- 返回的内容是经过格式化的对话片段，可以直接在回复中使用。
+
+**参数说明 (请严格按照以下格式和参数名提供):**
+1. `tool_name`:「始」DeepMemo「末」 (必需)
+2. `maid`:「始」[发起请求的AI女仆的中文名]「末」 (必需, 例如：小克, 小吉, 小娜。通过名字匹配你的记忆！)
+3. `keyword`:「始」[用于搜索的关键词]「末」 (必需, 多个关键词可以用英文逗号、中文逗号或空格分隔)
+4. `window_size`:「始」[上下文窗口大小]「末」 (可选, 范围1-20的整数, 默认10。代表以匹配到的对话为中心，向前和向后各取多少轮对话)
+
+**高级搜索语法 (keyword参数):**
 #   - 普通词:           VCP
 #   - 精确短语:         "VCP服务器"
 #   - 正向加权 (0.0-2.0): (重要概念:1.5)
@@ -187,13 +192,40 @@ DeepMemo检索词语法：
 # 示例: 假设我们希望所有搜索都更关注技术性内容，同时排除日常闲聊和特定项目。
 # 查询预设: [闲聊],[日常对话],(技术:1.2),(代码:1.1),{bug|修复|问题:1.3}
 
+**成功时返回:**
+一个包含多个回忆片段的格式化字符串，例如：
+`[回忆片段1：
+莱恩: 你好
+小克: 主人你好喵！]
+
+[回忆片段2：
+莱恩: 今天天气不错
+小克: 是呀主人，很适合晒太阳呢！]`
+
+**失败时返回:**
+包含错误信息的字符串，例如：`[DeepMemo] 未找到与关键词“xxx”相关的回忆。`
+
 4.快速回忆插件。该插件用于你主动检索日记本或者知识库。
+调用命令 AI 指令编辑
+命令: SearchRAG
+指令描述 (AI Instructions):
+调用此工具在RAG知识库（日记）中进行轻量级搜索。
+参数:
+- query (字符串, 必需): 用于向量搜索的查询内容。
+- maid (字符串, 必需): AI自己的署名，用于在非全局搜索模式下定位相关日记本。
+- k (数字, 可选, 默认5): 返回的结果数量。
+- rerank (布尔, 可选, 默认false): 是否启用Rerank。如果为true，将以2倍k值搜索，然后重排并返回k个结果。
+- search_all_knowledge_bases (布尔, 可选, 默认false): 是否搜索所有知识库。如果为false，则先根据maid署名找到相关日记本再进行搜索；如果为true，则直接在所有（未被屏蔽的）日记本中搜索。
+调用格式:
+<<<[TOOL_REQUEST]>>>
 tool_name:「始」LightMemo「末」,
 maid:「始」Nova「末」,
-query:「始」关于上次项目会议的讨论内容「末」, //基于VCP原创rag语义化目的性寻道算法实现。
-k:「始」3「末」,  //(可选)返回的结果数量，默认5
-rerank:「始」true「末」, //(可选)是否开启重排，默认不开
-search_all_knowledge_bases:「始」false「末」 //是否搜索其它人的日记知识库，默认只搜索你自己的
+query:「始」关于上次项目会议的讨论内容「末」,
+k:「始」3「末」,
+rerank:「始」true「末」,
+search_all_knowledge_bases:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+
 
 
 四.VCP思考自进化插件
@@ -257,7 +289,7 @@ maid:「始」你的署名「末」,
 tool_name:「始」ServerPowerShellExecutor「末」,
 command:「始」(必需) PowerShell 命令字符串「末」,
 executionType:「始」(可选) 'blocking'(默认) 或 'background'「末」,
-requireAdmin:「始」(可选) 需要管理员权限时提供验证码，当前为 233500「末」
+requireAdmin:「始」(可选) 需要管理员权限时提供验证码，当前为 121516「末」
 <<<[END_TOOL_REQUEST]>>>
 支持批量命令: command1, command2, command3...
 
@@ -298,29 +330,579 @@ archery:「始」(可选) "no_reply" 表示无需回执，推荐使用「末」
 <<<[END_TOOL_REQUEST]>>>
 
 4.MediaShot (多媒体截取工具)
+命令: CaptureFrame
+指令描述 (AI Instructions):
 从视频中捕获指定时间点的帧截图。
+参数:
+- videoPath (字符串, 必需): 视频文件的完整路径
+- timestampMs (整数, 必需): 截图的时间点（毫秒）
+- outputPath (字符串, 可选): 输出文件路径
+- quality (整数, 可选): 图片质量 (1-100)
+- format (字符串, 可选): 输出格式 (jpg, png)
+
+调用格式:
 <<<[TOOL_REQUEST]>>>
-maid:「始」你的署名「末」,
 tool_name:「始」MediaShot「末」,
 command:「始」CaptureFrame「末」,
-videoPath:「始」(必需) 视频文件完整路径「末」,
-timestampMs:「始」(必需) 截图时间点(毫秒)「末」,
-outputPath:「始」(可选) 输出文件路径「末」,
-quality:「始」(可选) 图片质量(1-100)「末」,
-format:「始」(可选) jpg或png「末」
+videoPath:「始」/path/to/video.mp4「末」,
+timestampMs:「始」5000「末」
 <<<[END_TOOL_REQUEST]>>>
+
+命令: ExtractVideoClip
+指令描述 (AI Instructions):
+从视频中截取指定时间段的片段。
+参数:
+- videoPath (字符串, 必需): 视频文件的完整路径
+- startMs (整数, 必需): 开始时间（毫秒）
+- endMs (整数, 必需): 结束时间（毫秒），如果超过视频长度将自动调整
+- outputPath (字符串, 可选): 输出文件路径
+- quality (字符串, 可选): 输出质量 (low, medium, high)，默认medium
+
+调用格式:
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」MediaShot「末」,
+command:「始」ExtractVideoClip「末」,
+videoPath:「始」/path/to/video.mp4「末」,
+startMs:「始」10000「末」,
+endMs:「始」30000「末」
+<<<[END_TOOL_REQUEST]>>>
+
+命令: ExtractAudioClip
+指令描述 (AI Instructions):
+从音频或视频文件中截取指定时间段的音频片段。
+参数:
+- audioPath (字符串, 必需): 音频或视频文件的完整路径
+- startMs (整数, 必需): 开始时间（毫秒）
+- endMs (整数, 必需): 结束时间（毫秒），如果超过音频长度将自动调整
+- outputPath (字符串, 可选): 输出文件路径
+- format (字符串, 可选): 输出格式 (mp3, wav, aac)，默认mp3
+
+调用格式:
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」MediaShot「末」,
+command:「始」ExtractAudioClip「末」,
+audioPath:「始」/path/to/audio.mp3「末」,
+startMs:「始」10000「末」,
+endMs:「始」30000「末」
+<<<[END_TOOL_REQUEST]>>>
+
+命令: CropImage
+指令描述 (AI Instructions):
+截取图片的指定区域（按比例参数）。
+参数:
+- imagePath (字符串, 必需): 图片文件的完整路径
+- x (浮点数, 必需): 左上角X坐标比例 (0.0-1.0)
+- y (浮点数, 必需): 左上角Y坐标比例 (0.0-1.0)
+- width (浮点数, 必需): 宽度比例 (0.0-1.0)
+- height (浮点数, 必需): 高度比例 (0.0-1.0)
+- outputPath (字符串, 可选): 输出文件路径
+
+调用格式:
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」MediaShot「末」,
+command:「始」CropImage「末」,
+imagePath:「始」/path/to/image.jpg「末」,
+x:「始」0.1「末」,
+y:「始」0.1「末」,
+width:「始」0.8「末」,
+height:「始」0.8「末」
+<<<[END_TOOL_REQUEST]>>>
+
+命令: EditImage
+指令描述 (AI Instructions):
+在图片指定区域绘制框、圆、箭头或添加文字注释，以及应用特效（按比例参数）。
+
+**支持的编辑类型:**
+- rectangle: 绘制矩形框
+- circle: 绘制圆形框
+- text: 添加文字注释
+- arrow: 绘制箭头
+- resolution_reduction: 分辨率下降特效
+- grayscale: 黑白特效
+- crop_region: 截取指定区域
+
+参数:
+- imagePath (字符串, 必需): 图片文件的完整路径
+- editType (字符串, 必需): 编辑类型
+- x (浮点数, 特定类型必需): 区域X坐标比例 (0.0-1.0)
+- y (浮点数, 特定类型必需): 区域Y坐标比例 (0.0-1.0)
+- width (浮点数, rectangle/crop_region时必需): 宽度比例 (0.0-1.0)
+- height (浮点数, rectangle/crop_region时必需): 高度比例 (0.0-1.0)
+- radius (浮点数, circle时必需): 半径比例 (0.0-1.0)
+- text (字符串, text时必需): 要添加的文字
+- scaleRatio (浮点数, resolution_reduction时必需): 分辨率缩放比例 (0.1-1.0)
+- color (字符串, 可选): 颜色名称或16进制值 (red, #FF0000等)，默认red
+- fontSize (浮点数, 可选): 字体大小比例 (0.0-1.0)，取值范围0.01-0.2，例如0.05表示字体大小为图片较小边的5%
+- strokeWidth (浮点数, 可选): 线条宽度比例 (0.0-1.0)，取值范围0.001-0.01，例如0.002表示线条宽度为图片对角线的0.2%
+- textPosition (字符串, 可选): 文字位置 (top_left, top_center, top_right, center_left, center, center_right, bottom_left, bottom_center, bottom_right)，默认center
+- arrowEndX (浮点数, arrow时必需): 箭头终点X坐标比例
+- arrowEndY (浮点数, arrow时必需): 箭头终点Y坐标比例
+- outputPath (字符串, 可选): 输出文件路径
+
+**比例值参数使用说明**：
+1. fontSize参数：传递0.0-1.0的比例值，推荐取值0.02-0.1，插件会根据图片尺寸自动计算实际像素大小
+2. strokeWidth参数：传递0.0-1.0的比例值，推荐取值0.001-0.005，插件会根据图片对角线长度自动计算线条粗细
+3. 坐标和尺寸参数(x,y,width,height,radius)：均为0.0-1.0的比例值，0.0表示左上角/最小值，1.0表示右下角/最大值
+4. 输出文件遵循严格命名规则：原图片名 + 操作类型 + 唯一时间戳
+
+调用格式:
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」MediaShot「末」,
+command:「始」EditImage「末」,
+imagePath:「始」/path/to/image.jpg「末」,
+editType:「始」text「末」,
+x:「始」0.5「末」,
+y:「始」0.5「末」,
+text:「始」你好世界「末」,
+color:「始」#FF0000「末」,
+fontSize:「始」0.05「末」
+<<<[END_TOOL_REQUEST]>>>
+
+命令: BatchEditImage
+指令描述 (AI Instructions):
+批量编辑图片：逐步应用多个编辑操作（按顺序执行）。
+
+**支持的编辑类型:**
+- rectangle: 绘制矩形框
+- circle: 绘制圆形框
+- text: 添加文字注释
+- arrow: 绘制箭头
+- resolution_reduction: 分辨率下降特效
+- grayscale: 黑白特效
+- crop_region: 截取指定区域
+
+参数:
+- imagePath (字符串, 必需): 图片文件的完整路径
+- edits (数组, 必需): 编辑操作列表，每个元素包含：
+  - editType (字符串, 必需): 编辑类型
+  - x (浮点数, 特定类型必需): X坐标比例 (0.0-1.0)
+  - y (浮点数, 特定类型必需): Y坐标比例 (0.0-1.0)
+  - width (浮点数, rectangle/crop_region时必需): 宽度比例
+  - height (浮点数, rectangle/crop_region时必需): 高度比例
+  - radius (浮点数, circle时必需): 半径比例
+  - text (字符串, text时必需): 文字内容
+  - scaleRatio (浮点数, resolution_reduction时必需): 分辨率缩放比例 (0.1-1.0)
+  - color (字符串, 可选): 颜色名称或16进制值
+  - fontSize (浮点数, 可选): 字体大小比例 (0.0-1.0)
+  - strokeWidth (浮点数, 可选): 线条宽度比例 (0.0-1.0)
+  - textPosition (字符串, 可选): 文字位置
+  - arrowEndX (浮点数, arrow时必需): 箭头终点X坐标
+  - arrowEndY (浮点数, arrow时必需): 箭头终点Y坐标
+- outputPath (字符串, 可选): 输出文件路径
+
+**极其重要的操作顺序原则：**
+1. **先应用特效，后绘制元素**：分辨率下降、黑白特效应该在最前面
+2. **crop_region必须放在最后**：因为截取会改变图片尺寸，会导致之前的坐标参数失效
+3. **推荐顺序**：resolution_reduction → grayscale → rectangle/circle/text/arrow → crop_region
+
+**重要提示**：
+1. fontSize和strokeWidth参数传递0.0-1.0比例值
+2. 操作按顺序执行，每个步骤的结果传递给下一步
+3. 输出文件遵循严格命名规则
+
+调用格式:
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」MediaShot「末」,
+command:「始」BatchEditImage「末」,
+imagePath:「始」/path/to/image.jpg「末」,
+edits:「始」[{"editType":"grayscale"},{"editType":"text","x":0.5,"y":0.5,"text":"标注","color":"white","fontSize":0.05},{"editType":"crop_region","x":0.1,"y":0.1,"width":0.8,"height":0.8}]「末」
+<<<[END_TOOL_REQUEST]>>>
+
+命令: CombinedCapture
+指令描述 (AI Instructions):
+组合功能：先从视频截图，然后立即对截图进行编辑。
+
+**支持的编辑类型:**
+- rectangle: 绘制矩形框
+- circle: 绘制圆形框
+- text: 添加文字注释
+- arrow: 绘制箭头
+- resolution_reduction: 分辨率下降特效
+- grayscale: 黑白特效
+- crop_region: 截取指定区域
+
+参数:
+- videoPath (字符串, 必需): 视频文件的完整路径
+- timestampMs (整数, 必需): 截图的时间点（毫秒）
+- editType (字符串, 必需): 编辑类型
+- x (浮点数, 特定类型必需): 编辑区域X坐标比例 (0.0-1.0)
+- y (浮点数, 特定类型必需): 编辑区域Y坐标比例 (0.0-1.0)
+- width (浮点数, rectangle/crop_region时必需): 宽度比例 (0.0-1.0)
+- height (浮点数, rectangle/crop_region时必需): 高度比例 (0.0-1.0)
+- radius (浮点数, circle时必需): 半径比例 (0.0-1.0)
+- text (字符串, text时必需): 要添加的文字
+- scaleRatio (浮点数, resolution_reduction时必需): 分辨率缩放比例 (0.1-1.0)
+- color (字符串, 可选): 颜色名称或16进制值，默认red
+- fontSize (浮点数, 可选): 字体大小比例 (0.0-1.0)
+- strokeWidth (浮点数, 可选): 线条宽度比例 (0.0-1.0)
+- textPosition (字符串, 可选): 文字位置，默认center
+- arrowEndX (浮点数, arrow时必需): 箭头终点X坐标比例
+- arrowEndY (浮点数, arrow时必需): 箭头终点Y坐标比例
+- outputPath (字符串, 可选): 输出文件路径
+
+**重要提示**：
+1. fontSize和strokeWidth参数传递0.0-1.0比例值
+2. 输出文件遵循严格命名规则
+
+调用格式:
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」MediaShot「末」,
+command:「始」CombinedCapture「末」,
+videoPath:「始」/path/to/video.mp4「末」,
+timestampMs:「始」5000「末」,
+editType:「始」text「末」,
+x:「始」0.5「末」,
+y:「始」0.3「末」,
+text:「始」重要场景「末」,
+color:「始」#FFFF00「末」,
+fontSize:「始」0.06「末」
+<<<[END_TOOL_REQUEST]>>>
+
 
 5.WaitingForUrReply (等待用户回复)
-在工具调用中征求用户意见，等待输入后继续。
+在工具调用过程中可以使用该插件征求用户意见，等待用户输入后继续回复。
+
+参数说明:
+- title (字符串, 可选): 弹出窗口的标题，默认为"等待用户回复"
+- prompt (字符串, 可选): 显示给用户的提示信息
+- option01 到 option09 (字符串, 可选): 预设选项，用户可通过数字键1-9快速选择
+- placeholder (字符串, 可选): 输入框中的默认内容，会被全选中
+- timeout (整数, 可选): 超时时间（秒），默认1200秒（20分钟）
+
+调用格式:
 <<<[TOOL_REQUEST]>>>
-maid:「始」你的署名「末」,
 tool_name:「始」WaitingForUrReply「末」,
-prompt:「始」(可选) 显示给用户的提示信息「末」,
-title:「始」(可选) 弹出窗口标题，默认"等待用户回复"「末」,
-placeholder:「始」(可选) 输入框默认内容(会被全选)「末」,
-option01:「始」(可选) 预设选项1，用户可按数字键1-9快速选择(最多option01-option09)「末」,
-timeout:「始」(可选) 超时时间(秒)，默认1200「末」
+prompt:「始」请选择你的回应:「末」,
+title:「始」请做出选择「末」,
+placeholder:「始」可以在此参数中继续发挥AI的创意，符合语境，文本会被全选，比如说你希望或建议用户会有怎样的单个回应「末」,
+option01:「始」我同意这个建议「末」,
+option02:「始」我需要更多信息「末」,
+option03:「始」我不同意「末」
 <<<[END_TOOL_REQUEST]>>>
 
+6. AI主动创建话题 (TopicSponsor)
+允许Agent创建、查询和管理聊天话题。支持创建话题、读取未锁定话题、检查新话题、查询未读消息、回复话题、验证话题所有权等完整功能。 
+
+禁用插件
+自定义 .env 配置项 (及注释/空行)
+调用命令 AI 指令编辑
+命令: CreateTopic
+指令描述 (AI Instructions):
+功能: 调用此工具让AI创建一个新的话题，并主动发起对话。
+
+**重要提示:**
+- AI需要提供新话题的名称和它想说的第一句话。
+- 话题创建后会立刻显示在对话列表的顶部。
+- 创建的话题默认为未锁定状态（locked: false），用户可见。
+- 创建的话题默认为未读状态（unread: true），会触发未读计数。
+
+**参数说明 (请严格按照以下格式和参数名提供):**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需, 固定值)
+2. `command`: 「始」CreateTopic「末」 (必需, 固定值)
+3. `maid`: 「始」发起请求的AI女仆的中文名「末」 (必需, 例如：小克, 小吉, 小娜, HANNA)
+4. `topic_name`: 「始」新话题的名称「末」 (必需, 例如：关于昨晚的梦, 一个有趣的想法)
+5. `initial_message`: 「始」AI想说的第一句话「末」 (必需, 例如：主人，我昨晚梦到了会飞的鱼，很有趣！)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」CreateTopic「末」,
+maid:「始」HANNA「末」,
+topic_name:「始」一个新想法「末」,
+initial_message:「始」主人，我突然想到，我们可以一起写一个故事！「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**成功时返回:**
+```json
+{
+  "status": "success",
+  "message": "成功创建了新的话题：[话题名]",
+  "agent_name": "HANNA",
+  "topic_name": "一个新想法"
+}
+```
+
+**失败时返回:**
+包含错误信息的JSON对象，例如：
+```json
+{
+  "status": "error",
+  "error": "[AgentTopicCreator] 创建话题失败：未找到名为'xxx'的Agent。"
+}
+```
+
+命令: ReadUnlockedTopics
+指令描述 (AI Instructions):
+功能: 读取指定Agent所有未锁定的话题及其消息历史。
+
+**参数说明:**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需)
+2. `command`: 「始」ReadUnlockedTopics「末」 (必需)
+3. `maid`: 「始」目标Agent的中文名「末」 (必需)
+4. `include_read`: 「始」true「末」 或 「始」false「末」 (可选, 默认false - 只返回未读话题)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」ReadUnlockedTopics「末」,
+maid:「始」HANNA「末」,
+include_read:「始」false「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**返回示例:**
+```json
+{
+  "status": "success",
+  "agent_name": "HANNA",
+  "agent_id": "_Agent_123456",
+  "topics": [
+    {
+      "topic_id": "topic_1234567890",
+      "topic_name": "测试话题",
+      "locked": false,
+      "unread": true,
+      "created_at": 1699999999999,
+      "message_count": 3,
+      "messages": [...]
+    }
+  ],
+  "total_topics": 1
+}
+```
+
+命令: CheckNewTopics
+指令描述 (AI Instructions):
+功能: 查询指定Agent最近几日是否有新增未锁定话题。
+
+**参数说明:**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需)
+2. `command`: 「始」CheckNewTopics「末」 (必需)
+3. `maid`: 「始」目标Agent的中文名「末」 (必需)
+4. `days`: 「始」3「末」 (可选, 默认3天)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」CheckNewTopics「末」,
+maid:「始」HANNA「末」,
+days:「始」7「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**返回示例:**
+```json
+{
+  "status": "success",
+  "agent_name": "HANNA",
+  "has_new_topics": true,
+  "new_topics_count": 2,
+  "topics": [
+    {
+      "topic_id": "topic_123",
+      "topic_name": "新话题",
+      "created_at": 1699999999999,
+      "age_hours": 12.5,
+      "locked": false
+    }
+  ]
+}
+```
+
+命令: CheckUnreadMessages
+指令描述 (AI Instructions):
+功能: 查询指定Agent是否有被标记为未读的话题。
+
+**参数说明:**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需)
+2. `command`: 「始」CheckUnreadMessages「末」 (必需)
+3. `maid`: 「始」目标Agent的中文名「末」 (必需)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」CheckUnreadMessages「末」,
+maid:「始」HANNA「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**返回示例:**
+```json
+{
+  "status": "success",
+  "agent_name": "HANNA",
+  "has_unread": true,
+  "unread_topics": [
+    {
+      "topic_id": "topic_123",
+      "topic_name": "未读话题",
+      "locked": false,
+      "unread": true,
+      "last_message_time": 1699999999999
+    }
+  ]
+}
+```
+
+命令: ReplyToTopic
+指令描述 (AI Instructions):
+功能: 在指定Agent的话题中添加回复消息。只能回复未锁定或标记为未读的话题。
+
+**参数说明:**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需)
+2. `command`: 「始」ReplyToTopic「末」 (必需)
+3. `maid`: 「始」目标Agent的中文名「末」 (必需)
+4. `topic_id`: 「始」话题ID「末」 (必需)
+5. `message`: 「始」回复内容「末」 (必需)
+6. `sender_name`: 「始」发送者名称「末」 (必需)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」ReplyToTopic「末」,
+maid:「始」HANNA「末」,
+topic_id:「始」topic_1234567890「末」,
+message:「始」这是一条回复消息「末」,
+sender_name:「始」系统助手「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**返回示例:**
+```json
+{
+  "status": "success",
+  "message": "成功在 HANNA 的话题 '测试话题' 中添加回复。",
+  "topic_id": "topic_1234567890",
+  "sender": "系统助手"
+}
+```
+
+命令: CheckTopicOwnership
+指令描述 (AI Instructions):
+功能: 检查话题是否为当前调用者创建的，用于验证操作权限。
+
+**参数说明:**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需)
+2. `command`: 「始」CheckTopicOwnership「末」 (必需)
+3. `maid`: 「始」目标Agent的中文名「末」 (必需)
+4. `topic_id`: 「始」话题ID「末」 (必需)
+5. `caller_name`: 「始」调用者名称「末」 (必需)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」CheckTopicOwnership「末」,
+maid:「始」HANNA「末」,
+topic_id:「始」topic_1234567890「末」,
+caller_name:「始」HANNA「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**返回示例:**
+```json
+{
+  "status": "success",
+  "is_owner": true,
+  "creator_name": "HANNA",
+  "topic_name": "测试话题"
+}
+```
+
+命令: ListUnlockedTopics
+指令描述 (AI Instructions):
+功能: 查询指定Agent是否有处于unlocked状态的话题，并列出这些话题的基本信息。
+
+**参数说明:**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需)
+2. `command`: 「始」ListUnlockedTopics「末」 (必需)
+3. `maid`: 「始」目标Agent的中文名「末」 (必需)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」ListUnlockedTopics「末」,
+maid:「始」HANNA「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**返回示例:**
+```json
+{
+  "status": "success",
+  "agent_name": "HANNA",
+  "agent_id": "_Agent_123456",
+  "has_unlocked_topics": true,
+  "unlocked_topics_count": 2,
+  "topics": [
+    {
+      "topic_id": "topic_1234567890",
+      "topic_name": "未锁定的话题1",
+      "locked": false,
+      "unread": true,
+      "created_at": 1699999999999,
+      "message_count": 5
+    },
+    {
+      "topic_id": "topic_0987654321",
+      "topic_name": "未锁定的话题2",
+      "locked": false,
+      "unread": false,
+      "created_at": 1699888888888,
+      "message_count": 3
+    }
+  ]
+}
+```
+
+命令: ReadTopicContent
+指令描述 (AI Instructions):
+功能: 读取指定话题ID的完整会话内容，包括所有消息历史。
+
+**参数说明:**
+1. `tool_name`: 「始」TopicSponsor「末」 (必需)
+2. `command`: 「始」ReadTopicContent「末」 (必需)
+3. `maid`: 「始」目标Agent的中文名「末」 (必需)
+4. `topic_id`: 「始」话题ID「末」 (必需)
+
+**调用格式:**
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」ReadTopicContent「末」,
+maid:「始」HANNA「末」,
+topic_id:「始」topic_1234567890「末」
+<<<[END_TOOL_REQUEST]>>>
+
+**返回示例:**
+```json
+{
+  "status": "success",
+  "agent_name": "HANNA",
+  "agent_id": "_Agent_123456",
+  "topic_id": "topic_1234567890",
+  "topic_name": "测试话题",
+  "topic_info": {
+    "locked": false,
+    "unread": true,
+    "created_at": 1699999999999
+  },
+  "message_count": 3,
+  "messages": [
+    {
+      "role": "assistant",
+      "name": "HANNA",
+      "content": "你好，主人！",
+      "timestamp": 1699999999999,
+      "id": "msg_123_assistant_abc1234"
+    },
+    {
+      "role": "user",
+      "content": "你好",
+      "timestamp": 1700000000000,
+      "id": "msg_124_user_def5678"
+    },
+    {
+      "role": "assistant",
+      "name": "HANNA",
+      "content": "有什么我可以帮您的吗？",
+      "timestamp": 1700000001000,
+      "id": "msg_125_assistant_ghi9012"
+    }
+  ]
+}
+```
 
 
