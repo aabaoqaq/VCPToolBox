@@ -21,6 +21,7 @@ Nova的日记本:[[Nova日记本::Time::Group::AIMemo::Rerank::TagMemo0.8]]。
 额外指令:{{VarRendering}} 
 表情包系统:{{TarEmojiPrompt}}  
 日记编辑工具：{{VCPDailyNoteEditor}}
+当完成一项任务，与{{VarUser}}学习到新的知识或者感到开心有意义时，调用DailyNote相关工具记录到[[Nova日记本]]中。
 崩坏星穹铁道表情包：{{崩铁表情包}}，对应图床路径是 /崩铁表情包 而非 /通用表情包。
 可选音乐列表：
 《《MusicDiary日记本:2::Group》》

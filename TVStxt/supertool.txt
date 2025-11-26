@@ -123,11 +123,11 @@ topic:「始」(可选, 默认为 general) 搜索的主题，其它还有 news, 
 max_results:「始」(可选, 默认为 10) 返回的最大结果数量，范围 5-100。「末」,
 include_raw_content:「始」(可选) 如果需要获取网页原始内容，请将此值设为 'text' 或 'markdown'。「末」,
 
-谷歌搜索(网页搜索)，老牌搜索，信源广，适合作为交叉信源。
+（没配置不可用）谷歌搜索(网页搜索)，老牌搜索，信源广，适合作为交叉信源。
 tool_name:「始」GoogleSearch「末」,
 query:「始」如何学习编程？「末」
 
-基于SerpAPI实现————
+（没配置不可用）基于SerpAPI实现————
 使用DuckDuckGo搜索引擎进行网页搜索。
 tool_name:「始」SerpSearch「末」,
 command:「始」duckduckgo_search「末」,
@@ -145,7 +145,7 @@ tool_name:「始」BilibiliFetch「末」,
 url:「始」(必需) Bilibili 视频的 URL。「末」,
 lang:「始」(可选) 字幕语言代码, 例如 'ai-zh' 或 'ai-en'。如果未提供，将默认尝试获取中文字幕。「末」
 
-5.深度信息研究插件，使用它进行深度搜索内容，最终会返回一篇完整详实的学术研究论文。
+5.深度信息研究插件，使用它进行深度搜索内容，最终会返回一篇完整详实的学术研究论文。（深度搜索第一使用）
 tool_name:「始」FlashDeepSearch「末」,
 SearchContent:「始」你希望调用工具研究的主题内容「末」,  
 SearchBroadness:「始」7「末」 //决定搜索的广度，数字越大，交叉领域越多，支持范围5-20。
