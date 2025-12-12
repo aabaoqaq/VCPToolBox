@@ -672,15 +672,29 @@ class RAGDiaryPlugin {
     }
 
     _stripHtml(html) {
-        if (!html || typeof html !== 'string') {
-            return html;
-        }
-        // 1. 使用 cheerio 加载 HTML 并提取纯文本
-        const $ = cheerio.load(html);
-        const plainText = $.text();
+        if (!html) return ''; // 确保返回空字符串而不是 null/undefined
         
-        // 2. 将连续的换行符（两个或更多）替换为单个换行符，并移除首尾空白，以减少噪音
-        return plainText.replace(/\n{2,}/g, '\n').trim();
+        // 如果不是字符串，尝试强制转换，避免 cheerio 或后续 trim 报错
+        if (typeof html !== 'string') {
+            return String(html);
+        }
+        
+        // 1. 使用 cheerio 加载 HTML 并提取纯文本
+        try {
+            const $ = cheerio.load(html);
+            // 关键修复：在提取文本之前，显式移除 style 和 script 标签
+            $('style, script').remove();
+            const plainText = $.text();
+            
+            // 3. 移除每行开头的空格，并将多个连续换行符压缩为最多两个
+            return plainText
+                .replace(/^[ \t]+/gm, '')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+        } catch (e) {
+            console.error('[RAGDiaryPlugin] _stripHtml error:', e);
+            return html; // 解析失败则返回原始内容
+        }
     }
 
     _stripEmoji(text) {
@@ -1212,19 +1226,32 @@ class RAGDiaryPlugin {
 
     /**
      * 刷新一个RAG区块
-     * @param {object} metadata - 从HTML注释中解析出的元数据 {dbName, modifiers, k, originalQuery}
-     * @param {string} newQueryContext - 工具返回的最新结果文本，用于生成新的查询向量
+     * @param {object} metadata - 从HTML注释中解析出的元数据 {dbName, modifiers, k}
+     * @param {object} contextData - 包含最新上下文的对象 { lastAiMessage, toolResultsText }
+     * @param {string} originalUserQuery - 从 chatCompletionHandler 回溯找到的真实用户查询
      * @returns {Promise<string>} 返回完整的、带有新元数据的新区块文本
      */
-    async refreshRagBlock(metadata, contextData) {
+    async refreshRagBlock(metadata, contextData, originalUserQuery) {
         console.log(`[VCP Refresh] 正在刷新 "${metadata.dbName}" 的记忆区块 (U:0.5, A:0.35, T:0.15 权重)...`);
         const { lastAiMessage, toolResultsText } = contextData;
-        const originalUserQuery = metadata.originalQuery || '';
-
+        
         // 1. 分别净化用户、AI 和工具的内容
-        const sanitizedUserContent = this._stripEmoji(this._stripHtml(originalUserQuery));
+        const sanitizedUserContent = this._stripEmoji(this._stripHtml(originalUserQuery || ''));
         const sanitizedAiContent = this._stripEmoji(this._stripHtml(lastAiMessage || ''));
-        const sanitizedToolContent = this._stripEmoji(this._stripHtml(toolResultsText || ''));
+        
+        // [修复] 处理工具结果：确保是字符串，并移除巨大的 Base64 图片数据，防止 TextChunker 崩溃
+        let rawToolText = toolResultsText || '';
+        if (typeof rawToolText !== 'string') {
+            try {
+                rawToolText = JSON.stringify(rawToolText);
+            } catch (e) {
+                rawToolText = String(rawToolText);
+            }
+        }
+        // 移除 data:image/xxx;base64,...... 格式的超长字符串
+        const cleanToolText = rawToolText.replace(/"data:image\/[^;]+;base64,[^"]+"/g, '"[Image Base64 Data Omitted]"');
+        
+        const sanitizedToolContent = this._stripEmoji(this._stripHtml(cleanToolText));
 
         // 2. 并行获取所有向量
         const [userVector, aiVector, toolVector] = await Promise.all([
@@ -1323,8 +1350,8 @@ class RAGDiaryPlugin {
         const metadata = {
             dbName: dbName,
             modifiers: modifiers,
-            k: finalK,
-            originalQuery: userContent // 保存原始查询
+            k: finalK
+            // V4.0: originalQuery has been removed to save tokens.
         };
 
         let retrievedContent = '';
@@ -1846,7 +1873,38 @@ class RAGDiaryPlugin {
             console.warn('[RAGDiaryPlugin] Rerank called, but is not configured. Skipping.');
             return documents.slice(0, originalK);
         }
-        // Rerank开始（静默）
+
+        // ✅ 新增：断路器模式防止循环调用
+        const circuitBreakerKey = `rerank_${Date.now()}`;
+        if (!this.rerankCircuitBreaker) {
+            this.rerankCircuitBreaker = new Map();
+        }
+        
+        // 检查是否在短时间内有太多失败
+        const now = Date.now();
+        const recentFailures = Array.from(this.rerankCircuitBreaker.entries())
+            .filter(([key, timestamp]) => now - timestamp < 60000) // 1分钟内
+            .length;
+            
+        if (recentFailures >= 5) {
+            console.warn('[RAGDiaryPlugin] Rerank circuit breaker activated due to recent failures. Skipping rerank.');
+            return documents.slice(0, originalK);
+        }
+
+        // ✅ 新增：查询截断机制防止"Query is too long"错误
+        const maxQueryTokens = Math.floor(this.rerankConfig.maxTokens * 0.3); // 预留70%给文档
+        let truncatedQuery = query;
+        let queryTokens = this._estimateTokens(query);
+        
+        if (queryTokens > maxQueryTokens) {
+            console.warn(`[RAGDiaryPlugin] Query too long (${queryTokens} tokens), truncating to ${maxQueryTokens} tokens`);
+            // 简单截断：按字符比例截断
+            const truncateRatio = maxQueryTokens / queryTokens;
+            const targetLength = Math.floor(query.length * truncateRatio * 0.9); // 留10%安全边距
+            truncatedQuery = query.substring(0, targetLength) + '...';
+            queryTokens = this._estimateTokens(truncatedQuery);
+            console.log(`[RAGDiaryPlugin] Query truncated to ${queryTokens} tokens`);
+        }
 
         const rerankUrl = new URL('v1/rerank', this.rerankConfig.url).toString();
         const headers = {
@@ -1854,15 +1912,24 @@ class RAGDiaryPlugin {
             'Content-Type': 'application/json',
         };
         const maxTokens = this.rerankConfig.maxTokens;
-        const queryTokens = this._estimateTokens(query);
 
+        // ✅ 优化批次处理逻辑
         let batches = [];
         let currentBatch = [];
         let currentTokens = queryTokens;
+        const minBatchSize = 1; // 确保每个批次至少有1个文档
+        const maxBatchTokens = maxTokens - queryTokens - 1000; // 预留1000 tokens安全边距
 
         for (const doc of documents) {
             const docTokens = this._estimateTokens(doc.text);
-            if (currentTokens + docTokens > maxTokens && currentBatch.length > 0) {
+            
+            // 如果单个文档就超过限制，跳过该文档
+            if (docTokens > maxBatchTokens) {
+                console.warn(`[RAGDiaryPlugin] Document too large (${docTokens} tokens), skipping`);
+                continue;
+            }
+            
+            if (currentTokens + docTokens > maxBatchTokens && currentBatch.length >= minBatchSize) {
                 // Current batch is full, push it and start a new one
                 batches.push(currentBatch);
                 currentBatch = [doc];
@@ -1873,14 +1940,23 @@ class RAGDiaryPlugin {
                 currentTokens += docTokens;
             }
         }
+        
         // Add the last batch if it's not empty
         if (currentBatch.length > 0) {
             batches.push(currentBatch);
         }
 
-        // 文档已分批（静默）
+        // 如果没有有效批次，直接返回原始文档
+        if (batches.length === 0) {
+            console.warn('[RAGDiaryPlugin] No valid batches for reranking, returning original documents');
+            return documents.slice(0, originalK);
+        }
+
+        console.log(`[RAGDiaryPlugin] Rerank processing ${batches.length} batches with truncated query (${queryTokens} tokens)`);
 
         let allRerankedDocs = [];
+        let failedBatches = 0;
+        
         for (let i = 0; i < batches.length; i++) {
             const batch = batches[i];
             const docTexts = batch.map(d => d.text);
@@ -1888,13 +1964,17 @@ class RAGDiaryPlugin {
             try {
                 const body = {
                     model: this.rerankConfig.model,
-                    query: query,
+                    query: truncatedQuery, // ✅ 使用截断后的查询
                     documents: docTexts,
                     top_n: docTexts.length // Rerank all documents within the batch
                 };
 
-                // Reranking批次 ${i + 1}/${batches.length}（静默）
-                const response = await axios.post(rerankUrl, body, { headers });
+                // ✅ 添加请求超时和重试机制
+                const response = await axios.post(rerankUrl, body, {
+                    headers,
+                    timeout: 30000, // 30秒超时
+                    maxRedirects: 0 // 禁用重定向防止循环
+                });
 
                 if (response.data && Array.isArray(response.data.results)) {
                     const rerankedResults = response.data.results;
@@ -1910,23 +1990,65 @@ class RAGDiaryPlugin {
                 } else {
                     console.warn(`[RAGDiaryPlugin] Rerank for batch ${i + 1} returned invalid data. Appending original batch documents.`);
                     allRerankedDocs.push(...batch); // Fallback: use original order for this batch
+                    failedBatches++;
                 }
             } catch (error) {
+                failedBatches++;
                 console.error(`[RAGDiaryPlugin] Rerank API call failed for batch ${i + 1}. Appending original batch documents.`);
+                
+                // ✅ 详细错误分析和断路器触发
                 if (error.response) {
-                    console.error(`[RAGDiaryPlugin] Rerank API Error - Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`);
+                    const status = error.response.status;
+                    const errorData = error.response.data;
+                    console.error(`[RAGDiaryPlugin] Rerank API Error - Status: ${status}, Data: ${JSON.stringify(errorData)}`);
+                    
+                    // 特定错误处理
+                    if (status === 400 && errorData?.error?.message?.includes('Query is too long')) {
+                        console.error('[RAGDiaryPlugin] Query still too long after truncation, adding to circuit breaker');
+                        this.rerankCircuitBreaker.set(`${circuitBreakerKey}_${i}`, now);
+                    } else if (status >= 500) {
+                        // 服务器错误，添加到断路器
+                        this.rerankCircuitBreaker.set(`${circuitBreakerKey}_${i}`, now);
+                    }
+                } else if (error.code === 'ECONNABORTED') {
+                    console.error('[RAGDiaryPlugin] Rerank API timeout');
+                    this.rerankCircuitBreaker.set(`${circuitBreakerKey}_${i}`, now);
                 } else {
                     console.error('[RAGDiaryPlugin] Rerank API Error - Message:', error.message);
+                    this.rerankCircuitBreaker.set(`${circuitBreakerKey}_${i}`, now);
                 }
+                
                 allRerankedDocs.push(...batch); // Fallback: use original order for this batch
+                
+                // ✅ 如果失败率过高，提前终止
+                if (failedBatches / (i + 1) > 0.5 && i > 2) {
+                    console.warn('[RAGDiaryPlugin] Too many rerank failures, terminating early');
+                    // 添加剩余批次的原始文档
+                    for (let j = i + 1; j < batches.length; j++) {
+                        allRerankedDocs.push(...batches[j]);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // ✅ 清理过期的断路器记录
+        for (const [key, timestamp] of this.rerankCircuitBreaker.entries()) {
+            if (now - timestamp > 300000) { // 5分钟后清理
+                this.rerankCircuitBreaker.delete(key);
             }
         }
 
         // 关键：在所有批次处理完后，根据 rerank_score 进行全局排序
-        allRerankedDocs.sort((a, b) => b.rerank_score - a.rerank_score);
+        allRerankedDocs.sort((a, b) => {
+            const scoreA = b.rerank_score ?? b.score ?? -1;
+            const scoreB = a.rerank_score ?? a.score ?? -1;
+            return scoreA - scoreB;
+        });
 
         const finalDocs = allRerankedDocs.slice(0, originalK);
-        console.log(`[RAGDiaryPlugin] Rerank完成: ${finalDocs.length}篇文档`);
+        const successRate = ((batches.length - failedBatches) / batches.length * 100).toFixed(1);
+        console.log(`[RAGDiaryPlugin] Rerank完成: ${finalDocs.length}篇文档 (成功率: ${successRate}%)`);
         return finalDocs;
     }
     
