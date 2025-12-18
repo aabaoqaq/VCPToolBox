@@ -1,0 +1,239 @@
+Git 更新与冲突解决指南
+
+📚 目录
+
+1. 日常更新流程 [<sup>1</sup>](#日常更新流程)
+2. 冲突处理 [<sup>2</sup>](#冲突处理)
+3. 推送到 GitHub [<sup>3</sup>](#推送到-github)
+4. 常见问题 [<sup>4</sup>](#常见问题)
+5. 命令速查 [<sup>5</sup>](#命令速查)
+
+🔄 日常更新流程
+使用自动脚本（推荐）
+
+
+1. 双击 自动更新.bat
+2. 查看更新内容，按 Y 确认
+3. 结果：
+   ✅ 无冲突 → 完成
+   ⚠️ 有冲突 → 继续看下面
+
+手动更新
+
+powershell
+git checkout custom       切换到 custom 分支
+git fetch upstream        获取官方更新
+git merge upstream/main   合并更新
+
+
+⚠️ 冲突处理
+第1步：确认有冲突
+
+powershell
+git status
+
+
+看到这些就是冲突：
+- `UU 文件名` 
+- `both modified: 文件名`
+- `Unmerged paths`
+
+不是冲突的：
+- `M 文件名` - 普通修改
+- `?? 文件名` - 未跟踪文件
+
+
+第2步：选择解决方式
+
+方式A：保留你的版本（推荐）
+
+powershell
+git checkout --ours 文件名
+git add 文件名
+
+
+适用：你修改过这个文件，想保留你的配置
+
+
+
+方式B：使用官方版本
+
+powershell
+git checkout --theirs 文件名
+git add 文件名
+
+
+适用：想要官方最新功能，你的修改不重要
+
+
+
+方式C：手动合并
+
+1. 在 VS Code 打开冲突文件
+2. 看到这样的标记：
+   
+   <<<<<<< HEAD
+   你的内容
+   =======
+   官方内容
+   >>>>>>> upstream/main
+   
+3. 手动删除不要的部分和标记
+4. 保存文件
+5. `git add 文件名`
+
+
+第3步：完成合并
+
+powershe所有冲突文件都处理完后
+git commit -m "解决冲突"
+
+
+验证：
+powershell
+git stat应显示：nothing to commit, working tree clean
+
+
+📤 推送到 GitHub
+
+powershell
+git push origin custom
+
+可能遇到的情况
+
+| 结果 | 说明 | 处理 |
+||||
+| ✅ 成功 | 显示 `custom -> custom` | 完成 |
+| 🔐 需要登录 | 要求输入用户名/密码 | 使用 Token（见下方） |
+| ⚠️ 被拒绝 | `rejected` 错误 | `git pull origin custom` 后重新推送 |
+
+Token 生成：
+1. 访问 https://github.com/settings/tokens
+2. Generate new token (classic)
+3. 勾选 `repo` 权限
+4. 复制生成的 Token（以 `ghp_` 开头）
+5. 在密码处粘贴 Token
+
+❓ 常见问题
+Q1：冲突太多，想放弃
+
+powershell
+git merge --abort 取消合并，回到之前状态
+
+
+
+Q2：不小心选错版本
+
+powershell
+git reset --hard HEAD~1 回退到上然后重新解决冲突
+
+
+
+Q3：想查看官方改了什么
+
+powershell
+git log upstream/main --oneline -10      看提交记录
+git diff custom..upstream/main -- 文件名 看具体改动
+
+
+
+Q4：多个冲突文件怎么办
+
+powershe一个一个处理
+git checkout --ours 文件1
+git add 文件1
+
+git checkout --theirs 文件2
+git add 文件全部处理完后
+git commit -m "解决所有冲突"
+
+
+🔍 命令速查
+核心命令
+
+powershell
+git status                   查看状态
+git checkout --ours 文件     保留你的版本
+git checkout --theirs 文件   使用官方版本
+git add 文件                 标记已解决
+git commit -m "说明"         完成合并
+git push origin custom       推送到 GitHub
+
+辅助命令
+
+powershell
+git merge --abort           放弃合并
+git log --oneline -10       查看提交历史
+git diff 文件               查看文件改动
+git reset --hard HEAD~1     回退一步
+
+
+🎯 快速流程图
+
+
+遇到冲突
+  ↓
+git status (查看冲突文件)
+  ↓
+选择解决方式：
+├─ git checkout --ours 文件   (保留你的)
+├─ git checkout --theirs 文件 (用官方的)
+└─ 手动编辑
+  ↓
+git add 文件
+  ↓
+git commit -m "解决冲突"
+  ↓
+git push origin custom
+  ↓
+完成 ✅
+
+
+💡 记住这三步
+
+
+1. 选版本  git checkout --ours/--theirs 文件
+2. 标记    git add 文件
+3. 提交    git commit -m "解决冲突"
+
+
+⚠️ 重要提示
+
+- ✅ 不确定用哪个版本，选 `--ours`（保留你的）最安全
+- ✅ 解决完冲突务必 `git push` 备份
+- ✅ 遇到问题先 `git merge --abort` 取消，再重来
+- ✅ 所有操作在 `custom` 分支，不要切换到 `main`
+
+🆘 紧急救援
+
+出错了不知道怎么办？
+
+powershell
+git merge --abort    先取消当前操作
+git status           查看状态
+git checkout custom  确保在 custom 重新按流程来一遍
+
+
+
+
+保存这个文档，遇到问题随时查阅！ 📖
+
+📝 建议修改
+
+我精简了以下内容：
+
+1. ✂️ 删除了过多的表情符号和装饰
+2. 📊 简化了表格，只保留关键信息
+3. 🎯 合并了重复的说明
+4. 📉 减少了 50% 的篇幅，但保留所有核心内容
+5. 🔍 添加了快速流程图
+6. 💡 突出了"记住三步"的核心要点
+
+保留了：
+- ✅ 所有重要命令
+- ✅ 冲突解决的3种方式
+- ✅ 常见问题解答
+- ✅ 命令速查表
+- ✅ Token 生成步骤
+
+您觉得这个版本如何？还需要调整什么吗？ 😊

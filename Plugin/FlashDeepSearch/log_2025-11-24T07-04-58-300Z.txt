@@ -1,0 +1,5 @@
+[FlashDeepSearch] 2025-11-24T07:04:58.305Z: 插件启动，接收到请求。
+[FlashDeepSearch] 2025-11-24T07:04:58.305Z: 研究主题: "一加Ace 6 OnePlus Ace 6详细参数配置、屏幕素质、影像能力、性能表现、续航测试、与竞品对比（红米K80至尊版、iQOO Neo10 Pro+、红米K90 Pro）、用户评价、购买建议", 搜索广度: 9
+[FlashDeepSearch] 2025-11-24T07:04:58.306Z: 步骤 1: 生成研究关键词...
+[FlashDeepSearch] 2025-11-24T07:04:58.306Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:05:21.676Z: DeepSearchModel 原始响应: [Ace 6 性能调校] [AMOLED LTPO 屏幕素质] [K80 vs Ace 6 性价比分析] [OnePlus Ace Series Market Strategy] [ColorOS 稳定性评价] [Ace 6 夜景样张] [Computational Photography Benchmarks] [Ultra-fast Charging Standard Comparison] [Price-Performance Trade-offs]

@@ -1,0 +1,18 @@
+[FlashDeepSearch] 2025-12-02T12:49:52.296Z: 插件启动，接收到请求。
+[FlashDeepSearch] 2025-12-02T12:49:52.296Z: 研究主题: "WeTab Infinity 扩展后门事件 深度技术分析 恶意代码行为 供应链攻击 2025", 搜索广度: 6
+[FlashDeepSearch] 2025-12-02T12:49:52.297Z: 步骤 1: 生成研究关键词...
+[FlashDeepSearch] 2025-12-02T12:49:52.297Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:49:59.040Z: DeepSearchModel 原始响应: [KeyWord1:] WeTab Infinity Backdoor Incident Deep Technical Analysis [KeyWord2:] Software Supply Chain Security Audit and Risk Mitigation [KeyWord3:] 恶意代码持久化机制与逃逸技术研究 (Malware Persistence and Evasion Techniques) [KeyWord4:] Digital Trust Architecture and Software Liability in 2025 [KeyWord5:] Firmware/Extension Integrity Verification Protocol [KeyWord6:] 重大供应链攻击事件的经济影响与政策应对 (Economic Impact of Major Supply Chain Attacks and Policy Response)
+[FlashDeepSearch] 2025-12-02T12:49:59.040Z: 成功提取到 6 个关键词。
+[FlashDeepSearch] 2025-12-02T12:49:59.040Z: 步骤 2: 并发执行 6 个搜索任务...
+[FlashDeepSearch] 2025-12-02T12:49:59.041Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:49:59.042Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:49:59.043Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:49:59.044Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:49:59.045Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:50:01.806Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:50:03.441Z: 成功完成 6 个搜索任务。
+[FlashDeepSearch] 2025-12-02T12:50:03.441Z: 步骤 3: 生成最终研究报告...
+[FlashDeepSearch] 2025-12-02T12:50:03.441Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-12-02T12:50:18.889Z: 最终报告已生成。
+[FlashDeepSearch] 2025-12-02T12:50:18.893Z: 报告已成功保存到: F:\VCP\VCPToolBox\file\document\2025-12-02T12-50-18-890Z_WeTab Infinity 扩展后门事.txt

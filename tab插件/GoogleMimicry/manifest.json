@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "GoogleMimicry",
+  "version": "1.0.0",
+  "description": "Google New Tab 1:1 Replica with Privacy Features",
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "permissions": [],
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  }
+}

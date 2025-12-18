@@ -1,0 +1,19 @@
+[FlashDeepSearch] 2025-11-26T15:45:12.459Z: 插件启动，接收到请求。
+[FlashDeepSearch] 2025-11-26T15:45:12.460Z: 研究主题: "清热解毒去火药物推荐", 搜索广度: 7
+[FlashDeepSearch] 2025-11-26T15:45:12.460Z: 步骤 1: 生成研究关键词...
+[FlashDeepSearch] 2025-11-26T15:45:12.460Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:19.201Z: DeepSearchModel 原始响应: [TCM Anti-inflammatory Mechanism:] [温病学与清热解毒方剂史:] [Global Detox Supplement Market Trends:] [中药肝毒性与安全性评估:] [Herbal vs NSAID Efficacy Comparison:] [实火虚火辨证论治:] [新型清热中药化合物研发:]
+[FlashDeepSearch] 2025-11-26T15:45:19.201Z: 成功提取到 7 个关键词。
+[FlashDeepSearch] 2025-11-26T15:45:19.202Z: 步骤 2: 并发执行 7 个搜索任务...
+[FlashDeepSearch] 2025-11-26T15:45:19.202Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:19.203Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:19.204Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:19.205Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:19.207Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:26.729Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:26.730Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:31.019Z: 成功完成 7 个搜索任务。
+[FlashDeepSearch] 2025-11-26T15:45:31.019Z: 步骤 3: 生成最终研究报告...
+[FlashDeepSearch] 2025-11-26T15:45:31.020Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:45:41.070Z: 最终报告已生成。
+[FlashDeepSearch] 2025-11-26T15:45:41.072Z: 报告已成功保存到: F:\VCP\VCPToolBox\file\document\2025-11-26T15-45-41-071Z_清热解毒去火药物推荐.txt

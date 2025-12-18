@@ -1,0 +1,20 @@
+[FlashDeepSearch] 2025-11-24T06:44:48.030Z: 插件启动，接收到请求。
+[FlashDeepSearch] 2025-11-24T06:44:48.030Z: 研究主题: "2025年3000元以下手机推荐，重点关注屏幕素质和影像能力双优的机型，包括2K屏幕、高刷新率、主摄传感器尺寸、长焦配置、夜景算法等详细参数对比", 搜索广度: 8
+[FlashDeepSearch] 2025-11-24T06:44:48.031Z: 步骤 1: 生成研究关键词...
+[FlashDeepSearch] 2025-11-24T06:44:48.031Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:55.021Z: DeepSearchModel 原始响应: [KeyWord1:] 3000元 手机 影像 屏幕 对比 [KeyWord2:] Mid-range phone sensor size telephoto 2025 [KeyWord3:] 3000元 手机 2K 功耗 权衡 [KeyWord4:] Computational photography algorithms mid-range 2025 [KeyWord5:] 2025 中端 旗舰 下放 技术 [KeyWord6:] 120Hz LTPO display budget segment 2025 [KeyWord7:] 2025 骁龙7系 影像 屏幕 [KeyWord8:] Smartphone camera war sub-3000 evolution
+[FlashDeepSearch] 2025-11-24T06:44:55.021Z: 成功提取到 8 个关键词。
+[FlashDeepSearch] 2025-11-24T06:44:55.021Z: 步骤 2: 并发执行 8 个搜索任务...
+[FlashDeepSearch] 2025-11-24T06:44:55.022Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:55.023Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:55.024Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:55.025Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:55.026Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:59.697Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:59.698Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:44:59.699Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:45:04.077Z: 成功完成 8 个搜索任务。
+[FlashDeepSearch] 2025-11-24T06:45:04.077Z: 步骤 3: 生成最终研究报告...
+[FlashDeepSearch] 2025-11-24T06:45:04.077Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-24T06:45:15.692Z: 最终报告已生成。
+[FlashDeepSearch] 2025-11-24T06:45:15.696Z: 报告已成功保存到: F:\VCP\VCPToolBox\file\document\2025-11-24T06-45-15-694Z_2025年3000元以下手机推荐，重点关.txt

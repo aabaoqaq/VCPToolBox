@@ -1,0 +1,20 @@
+[FlashDeepSearch] 2025-11-24T07:47:44.251Z: 插件启动，接收到请求。
+[FlashDeepSearch] 2025-11-24T07:47:44.252Z: 研究主题: "2025年3000元价位段手机屏幕和影像系统对比分析：真我GT8、一加Ace 6、iQOO Neo10 Pro、iQOO Neo11的屏幕素质（分辨率、刷新率、PWM调光、色准）和影像能力（主摄传感器、长焦配置、算法优化、实拍表现）的详细对比评测", 搜索广度: 8
+[FlashDeepSearch] 2025-11-24T07:47:44.253Z: 步骤 1: 生成研究关键词...
+[FlashDeepSearch] 2025-11-24T07:47:44.253Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:50.875Z: DeepSearchModel 原始响应: [高频PWM调光标准:] [Computational Photography Evolution:] [3000元档位性价比分析:] [BBK Smartphone Strategy:] [手机影像实拍盲测:] [Display Color Grading Metrics:] [潜望式长焦普及趋势:] [Blue Light Emission Standards:]
+[FlashDeepSearch] 2025-11-24T07:47:50.876Z: 成功提取到 8 个关键词。
+[FlashDeepSearch] 2025-11-24T07:47:50.876Z: 步骤 2: 并发执行 8 个搜索任务...
+[FlashDeepSearch] 2025-11-24T07:47:50.876Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:50.877Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:50.879Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:50.881Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:50.882Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:55.015Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:55.016Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:55.017Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:47:59.982Z: 成功完成 8 个搜索任务。
+[FlashDeepSearch] 2025-11-24T07:47:59.983Z: 步骤 3: 生成最终研究报告...
+[FlashDeepSearch] 2025-11-24T07:47:59.983Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-24T07:48:13.170Z: 最终报告已生成。
+[FlashDeepSearch] 2025-11-24T07:48:13.177Z: 报告已成功保存到: F:\VCP\VCPToolBox\file\document\2025-11-24T07-48-13-174Z_2025年3000元价位段手机屏幕和影像.txt

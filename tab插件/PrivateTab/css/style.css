@@ -1,0 +1,85 @@
+/* 全局重置 */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+}
+
+/* 壁纸 */
+#wallpaper {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: url('https://source.unsplash.com/random/1920x1080/?nature,landscape') no-repeat center center/cover;
+    z-index: -1;
+    transition: filter 0.3s ease;
+}
+
+/* 搜索框 */
+.search-box {
+    margin-bottom: 40px;
+    width: 100%;
+    max-width: 560px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 12px 24px;
+    border-radius: 24px;
+    border: none;
+    outline: none;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    font-size: 16px;
+    transition: box-shadow 0.2s;
+}
+
+.search-box input:focus {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+/* 链接网格 */
+.link-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    max-width: 800px;
+}
+
+.link-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-decoration: none;
+    color: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.1);
+    transition: background 0.2s, transform 0.1s;
+    cursor: pointer;
+}
+
+.link-item:hover {
+    background: rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+}
+
+.link-icon {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 8px;
+    border-radius: 50%;
+    background: #fff;
+    padding: 8px;
+}
+
+.link-title {
+    font-size: 13px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}

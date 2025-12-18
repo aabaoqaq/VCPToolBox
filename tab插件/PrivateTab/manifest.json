@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "PrivateTab - Stealth Start Page",
+  "version": "1.0.0",
+  "description": "A minimalist new tab page with a hidden privacy layer.",
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "permissions": [
+    "storage",
+    "topSites",
+    "favicon"
+  ],
+  "icons": {
+    "128": "assets/icons/icon.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

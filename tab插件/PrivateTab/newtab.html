@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>New Tab</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/stealth.css">
+</head>
+<body>
+    <!-- 背景层 -->
+    <div id="wallpaper"></div>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <!-- 搜索框 -->
+        <div class="search-box">
+            <form action="https://www.google.com/search" method="get">
+                <input type="text" name="q" placeholder="Search Google or type a URL" autocomplete="off">
+            </form>
+        </div>
+
+        <!-- 普通快捷方式区 (Surface Layer) -->
+        <div id="public-grid" class="link-grid">
+            <!-- JS 动态生成 -->
+        </div>
+    </div>
+
+    <!-- 伪装组件 (Stealth Trigger) -->
+    <!-- 这是一个看起来像天气的小组件，位于右上角 -->
+    <div id="weather-widget" class="widget">
+        <span class="icon">⛅</span>
+        <span class="temp">24°C</span>
+        <span class="loc">Local</span>
+    </div>
+
+    <!-- 隐私层 (Stealth Layer) -->
+    <!-- 默认隐藏，触发后覆盖全屏 -->
+    <div id="stealth-layer" class="hidden">
+        <div class="stealth-content">
+            <h2>Private Space</h2>
+            <div id="private-grid" class="link-grid">
+                <!-- JS 动态生成隐私链接 -->
+            </div>
+            <button id="close-stealth">Exit Stealth Mode</button>
+        </div>
+    </div>
+
+    <!-- 逻辑脚本 -->
+    <script src="js/storage.js"></script>
+    <script src="js/stealth.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

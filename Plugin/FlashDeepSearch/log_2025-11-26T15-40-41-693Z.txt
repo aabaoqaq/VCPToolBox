@@ -1,0 +1,45 @@
+[FlashDeepSearch] 2025-11-26T15:40:41.700Z: 插件启动，接收到请求。
+[FlashDeepSearch] 2025-11-26T15:40:41.701Z: 研究主题: "清热解毒去火药物推荐与对比分析
+
+## 研究背景
+需要全面研究中国市场上常见的清热解毒类中成药，包括但不限于：
+- 牛黄解毒片/丸
+- 黄连上清片/丸
+- 板蓝根颗粒
+- 三黄片
+- 穿心莲片
+- 金银花颗粒
+
+## 研究维度
+1. **药理机制**：各药物的清热解毒原理和中医理论基础
+2. **适应症对比**：不同药物适用的"上火"类型（实火、虚火、湿热等）
+3. **价格分析**：2025年各大药店和电商平台的最新价格区间
+4. **疗效对比**：临床效果、起效时间、疗程建议
+5. **安全性分析**：副作用、禁忌人群、用药注意事项
+6. **用户评价**：患者使用反馈和满意度
+7. **性价比排名**：综合价格和疗效的最优选择
+
+## 特别关注
+- 适合海南湿热气候的药物选择
+- 长期服用的安全性问题
+- 与西药的配伍禁忌", 搜索广度: 8
+[FlashDeepSearch] 2025-11-26T15:40:41.701Z: 步骤 1: 生成研究关键词...
+[FlashDeepSearch] 2025-11-26T15:40:41.701Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:50.043Z: DeepSearchModel 原始响应: [中成药清热解毒药理学:] [TCMs Cost-Effectiveness Analysis:] [湿热证 清热解毒用药:] [中成药长期服用安全性:] [Niuhuang Jiedu Tablet Clinical Efficacy:] [Comparative Study of Antipyretic Chinese Medicines:] [Herb-Drug Interaction Antipyretic:] [清热药患者使用反馈 PRO:]
+[FlashDeepSearch] 2025-11-26T15:40:50.043Z: 成功提取到 8 个关键词。
+[FlashDeepSearch] 2025-11-26T15:40:50.044Z: 步骤 2: 并发执行 8 个搜索任务...
+[FlashDeepSearch] 2025-11-26T15:40:50.044Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:50.045Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:50.046Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:50.047Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:50.048Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:56.393Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:56.395Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:40:56.396Z: 调用模型: gemini-2.5-flash-lite-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:41:06.199Z: 成功完成 8 个搜索任务。
+[FlashDeepSearch] 2025-11-26T15:41:06.199Z: 步骤 3: 生成最终研究报告...
+[FlashDeepSearch] 2025-11-26T15:41:06.199Z: 调用模型: gemini-2.5-flash-preview-09-2025
+[FlashDeepSearch] 2025-11-26T15:41:19.496Z: 最终报告已生成。
+[FlashDeepSearch] 2025-11-26T15:41:19.499Z: 警告：保存报告文件失败: ENOENT: no such file or directory, open 'F:\VCP\VCPToolBox\file\document\2025-11-26T15-41-19-498Z_清热解毒去火药物推荐与对比分析
+
+## .txt'
