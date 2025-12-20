@@ -1,0 +1,18 @@
+[33m6fc958b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mcustom[m[33m, [m[1;31morigin/custom[m[33m)[m HEAD@{0}: commit: merge: 保留本地Agent配置、日记索引，接受官方插件更新
+[33m8dc27ad[m HEAD@{1}: merge upstream/main: Merge made by the 'ort' strategy.
+[33mc2cc68c[m HEAD@{2}: commit: 更新Nova配置
+[33m74aa0d9[m HEAD@{3}: merge upstream/main: Merge made by the 'ort' strategy.
+[33m57a0b9e[m HEAD@{4}: commit: 更新配置和缓存文件，移除旧的更新脚本
+[33m42585dd[m HEAD@{5}: merge upstream/main: Merge made by the 'ort' strategy.
+[33mb816fd5[m HEAD@{6}: commit: 更新自己的最新修改
+[33mae247d3[m HEAD@{7}: merge upstream/main: Merge made by the 'ort' strategy.
+[33mc3d0c29[m HEAD@{8}: commit (merge): 解决冲突
+[33m51ebb08[m HEAD@{9}: commit: 修改与更新
+[33m05acf91[m HEAD@{10}: commit: 日记格式优化
+[33m65381eb[m HEAD@{11}: commit: 系统更改
+[33mfa2a0ef[m HEAD@{12}: commit: 删除
+[33mab26b29[m HEAD@{13}: commit: ENV配置更新
+[33m2e967c5[m HEAD@{14}: merge upstream/main: Merge made by the 'ort' strategy.
+[33m43dc572[m HEAD@{15}: commit: 保留更改版本
+[33m0031fdc[m[33m ([m[1;32mmain[m[33m)[m HEAD@{16}: checkout: moving from main to custom
+[33m0031fdc[m[33m ([m[1;32mmain[m[33m)[m HEAD@{17}: clone: from https://github.com/lioensky/VCPToolBox.git
