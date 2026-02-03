@@ -176,3 +176,4 @@ image/fluxgen/
 **/.DS_Store
 .DS_Store?
 /.obsidian
+Plugin/MIDITranslator/config.env
