@@ -177,3 +177,20 @@ image/fluxgen/
 .DS_Store?
 /.obsidian
 Plugin/MIDITranslator/config.env
+
+# Nova 更新管理 - 隐私保护（不推送到远程仓库）
+Agent/
+TVStxt/
+.nova-update-rules.md
+.update-exclude.txt
+
+# 运行时数据文件
+agent_map.json
+Plugin/RAGDiaryPlugin/meta_chain_vector_cache.json
+Plugin/PowerShellExecutor/config.env
+Plugin/FileOperator/config.env
+output/
+file/document/
+Plugin/FlashDeepSearch/log/
+Plugin/MIDITranslator/target/
+Plugin/MIDITranslator/index.win32-x64-msvc.node
