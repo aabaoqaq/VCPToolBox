@@ -250,7 +250,7 @@ class ToolExecutor {
           const embeddingConfig = {
             apiKey: process.env.API_KEY,
             apiUrl: process.env.API_URL,
-            model: process.env.WhitelistEmbeddingModel || 'google/gemini-embedding-001'
+            model: process.env.WhitelistEmbeddingModel || 'gemini-embedding-2-preview'
           };
           const allTexts = [
             queryText.slice(0, 1000),

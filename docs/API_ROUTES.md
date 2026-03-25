@@ -431,7 +431,7 @@ const MAX_API_ERRORS = 5;  // 最大错误次数
 WhitelistImageModel=gemini-2.0-flash-exp-image-generation
 
 # 向量化模型白名单
-WhitelistEmbeddingModel=gemini-embedding-exp-03-07
+WhitelistEmbeddingModel=gemini-embedding-2-preview
 ```
 
 ### 5.2 图像模型处理

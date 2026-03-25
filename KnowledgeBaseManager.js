@@ -31,7 +31,7 @@ class KnowledgeBaseManager {
             storePath: config.storePath || process.env.KNOWLEDGEBASE_STORE_PATH || path.join(__dirname, 'VectorStore'),
             apiKey: process.env.API_Key,
             apiUrl: process.env.API_URL,
-            model: process.env.WhitelistEmbeddingModel || 'google/gemini-embedding-001',
+            model: process.env.WhitelistEmbeddingModel || 'gemini-embedding-2-preview',
             // ⚠️ 务必确认环境变量 VECTORDB_DIMENSION 与模型一致 (3-small通常为1536)
             dimension: parseInt(process.env.VECTORDB_DIMENSION) || 3072,
 

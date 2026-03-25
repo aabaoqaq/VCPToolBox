@@ -44,7 +44,7 @@ const config = {
     dimension: parseInt(process.env.VECTORDB_DIMENSION) || 3072,
     apiKey: process.env.API_Key,
     apiUrl: process.env.API_URL,
-    model: process.env.WhitelistEmbeddingModel || 'google/gemini-embedding-001'
+    model: process.env.WhitelistEmbeddingModel || 'gemini-embedding-2-preview'
 };
 
 // 命令行参数定义
