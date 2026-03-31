@@ -5,8 +5,9 @@ const encoding = get_encoding("cl100k_base");
 // 配置
 const embeddingMaxToken = parseInt(process.env.WhitelistEmbeddingModelMaxToken, 10) || 8000;
 const safeMaxTokens = Math.floor(embeddingMaxToken * 0.85);
-const MAX_BATCH_ITEMS = 100; // Gemini/OpenAI 限制
-const DEFAULT_CONCURRENCY = parseInt(process.env.TAG_VECTORIZE_CONCURRENCY) || 5; // 🌟 读取并发配置
+const MAX_BATCH_ITEMS = Math.max(1, parseInt(process.env.EMBEDDING_MAX_BATCH_ITEMS, 10) || 100);
+const DEFAULT_CONCURRENCY = Math.max(1, parseInt(process.env.TAG_VECTORIZE_CONCURRENCY, 10) || 5); // 🌟 读取并发配置
+const REQUEST_TIMEOUT_MS = Math.max(5000, parseInt(process.env.EMBEDDING_REQUEST_TIMEOUT_MS, 10) || 60000);
 
 /**
  * 内部函数：发送单个批次
@@ -17,6 +18,8 @@ async function _sendBatch(batchTexts, config, batchNumber) {
     const baseDelay = 1000;
 
     for (let attempt = 1; attempt <= retryAttempts; attempt++) {
+        const abortController = new AbortController();
+        const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
         try {
             const requestUrl = `${config.apiUrl}/v1/embeddings`;
             const requestBody = { model: config.model, input: batchTexts };
@@ -25,7 +28,8 @@ async function _sendBatch(batchTexts, config, batchNumber) {
             const response = await fetch(requestUrl, {
                 method: 'POST',
                 headers: requestHeaders,
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify(requestBody),
+                signal: abortController.signal
             });
 
             const responseBodyText = await response.text();
@@ -90,9 +94,14 @@ async function _sendBatch(batchTexts, config, batchNumber) {
             return data.data.sort((a, b) => a.index - b.index).map(item => item.embedding);
 
         } catch (e) {
-            console.warn(`[Embedding] Batch ${batchNumber}, Attempt ${attempt} failed: ${e.message}`);
+            const errorMessage = e.name === 'AbortError'
+                ? `Request timed out after ${REQUEST_TIMEOUT_MS}ms`
+                : e.message;
+            console.warn(`[Embedding] Batch ${batchNumber}, Attempt ${attempt} failed: ${errorMessage}`);
             if (attempt === retryAttempts) throw e;
             await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+        } finally {
+            clearTimeout(timeout);
         }
     }
 }
