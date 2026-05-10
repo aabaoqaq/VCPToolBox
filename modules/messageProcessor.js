@@ -5,6 +5,8 @@ const lunarCalendar = require('chinese-lunar-calendar');
 const agentManager = require('./agentManager.js'); // 引入新的Agent管理器
 const tvsManager = require('./tvsManager.js'); // 引入新的TVS管理器
 const toolboxManager = require('./toolboxManager.js');
+const dynamicToolRegistry = require('./dynamicToolRegistry.js');
+const sarPromptManager = require('./sarPromptManager.js');
 
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'Asia/Shanghai';
 const REPORT_TIMEZONE = process.env.REPORT_TIMEZONE || 'Asia/Shanghai'; // 新增：用于控制 AI 报告的时间，默认回退到中国时区
@@ -151,10 +153,11 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
         return `[无效的动态折叠数据结构: ${placeholderKey}]`;
     }
 
-    // 按阈值降序排序 (0.7, 0.5, 0.0)
-    const blocks = [...foldObj.fold_blocks].sort((a, b) => b.threshold - a.threshold);
-    // 最低阈值区块作为后备 (Fallback)
-    const fallbackBlock = blocks[blocks.length - 1];
+    const blocks = foldObj.fold_blocks
+        .filter(block => block && typeof block.content === 'string');
+    const blocksByThreshold = [...blocks].sort((a, b) => (b.threshold || 0) - (a.threshold || 0));
+    const fallbackBlock = [...blocksByThreshold].reverse().find(block => block.content)
+        || { threshold: 0.0, content: '' };
 
     try {
         const ragPlugin = context.pluginManager.messagePreprocessors?.get('RAGDiaryPlugin');
@@ -163,9 +166,7 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
             return fallbackBlock.content;
         }
 
-        // 提取最后一个 User 和 AI 的消息作为核心比对内容 (原子级复刻 RAGDiaryPlugin 逻辑以命中向量缓存)
         const contextMessages = context.messages || [];
-
         const lastUserMessageIndex = contextMessages.findLastIndex(m => {
             if (m.role !== 'user') return false;
             const content = typeof m.content === 'string'
@@ -197,7 +198,6 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
             return fallbackBlock.content;
         }
 
-        // 调用 RAGDiaryPlugin 的统一净化方法，确保文本与 RAG 插件完全一致 (命中缓存的关键)
         if (typeof ragPlugin.sanitizeForEmbedding === 'function') {
             if (userContent) {
                 const originalUserContent = userContent;
@@ -214,7 +214,6 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
                 }
             }
         } else {
-            // 后备逻辑：如果插件版本较旧，尝试使用旧的私有方法
             if (typeof ragPlugin._stripSystemNotification === 'function') {
                 if (userContent) {
                     userContent = ragPlugin._stripSystemNotification(userContent);
@@ -230,7 +229,6 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
             }
         }
 
-        // 🌟 对齐 RAGDiaryPlugin 的加权平均逻辑以命中缓存
         const config = ragPlugin.ragParams?.RAGDiaryPlugin || {};
         const mainWeights = config.mainSearchWeights || [0.7, 0.3];
 
@@ -245,53 +243,128 @@ async function resolveDynamicFoldProtocol(foldObj, context, placeholderKey) {
             return fallbackBlock.content;
         }
 
-        // 计算插件描述向量 (使用 KBM 的 SQLite 持久化缓存)
-        const descText = foldObj.plugin_description || placeholderKey;
-        let descVector = null;
-        if (ragPlugin.vectorDBManager && typeof ragPlugin.vectorDBManager.getPluginDescriptionVector === 'function') {
-            descVector = await ragPlugin.vectorDBManager.getPluginDescriptionVector(
-                descText,
-                // 必须绑定 this 到 ragPlugin 避免上下文丢失
-                ragPlugin.getSingleEmbeddingCached.bind(ragPlugin)
-            );
-        } else {
-            // 后备：没有 SQLite 时使用自带内存缓存
-            descVector = await ragPlugin.getSingleEmbeddingCached(descText);
-        }
+        const vectorCache = new Map();
+        const getDescriptionVector = async (descriptionText) => {
+            const key = String(descriptionText || '').trim();
+            if (!key) return null;
+            if (vectorCache.has(key)) return vectorCache.get(key);
 
-        if (!descVector) {
-            if (context.DEBUG_MODE) console.log(`[DynamicFold] 获取插件描述向量失败，返回基础内容 (${placeholderKey})`);
+            let descVector = null;
+            if (ragPlugin.vectorDBManager && typeof ragPlugin.vectorDBManager.getPluginDescriptionVector === 'function') {
+                descVector = await ragPlugin.vectorDBManager.getPluginDescriptionVector(
+                    key,
+                    ragPlugin.getSingleEmbeddingCached.bind(ragPlugin)
+                );
+            } else {
+                descVector = await ragPlugin.getSingleEmbeddingCached(key);
+            }
+            vectorCache.set(key, descVector);
+            return descVector;
+        };
+
+        const cosineSimilarity = (vectorA, vectorB) => {
+            if (!vectorA || !vectorB) return 0;
+            let dotProduct = 0;
+            let normA = 0;
+            let normB = 0;
+            const len = Math.min(vectorA.length, vectorB.length);
+            for (let i = 0; i < len; i++) {
+                dotProduct += vectorA[i] * vectorB[i];
+                normA += vectorA[i] * vectorA[i];
+                normB += vectorB[i] * vectorB[i];
+            }
+            return (normA === 0 || normB === 0)
+                ? 0
+                : dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+        };
+
+        const toolboxBlockStrategy = foldObj.dynamic_fold_strategy === 'toolbox_block_similarity';
+
+        let pluginSimilarity = null;
+        const getPluginSimilarity = async () => {
+            if (pluginSimilarity != null) return pluginSimilarity;
+            const descText = foldObj.plugin_description || placeholderKey;
+            const descVector = await getDescriptionVector(descText);
+            if (!descVector) {
+                if (context.DEBUG_MODE) console.log(`[DynamicFold] 获取插件描述向量失败，返回基础内容 (${placeholderKey})`);
+                pluginSimilarity = 0;
+                return pluginSimilarity;
+            }
+            pluginSimilarity = cosineSimilarity(descVector, userVector);
+            if (context.DEBUG_MODE) {
+                console.log(`[DynamicFold] ${placeholderKey} 上下文相似度: ${pluginSimilarity.toFixed(3)} (目标区块数: ${blocks.length})`);
+            }
+            return pluginSimilarity;
+        };
+
+        if (!toolboxBlockStrategy) {
+            const sim = await getPluginSimilarity();
+            for (const block of blocksByThreshold) {
+                const threshold = Number.isFinite(Number(block.threshold)) ? Number(block.threshold) : 0;
+                if (sim >= threshold) {
+                    if (context.DEBUG_MODE) console.log(`[DynamicFold] ${placeholderKey} 命中阈值 >= ${threshold}，展开相关内容。`);
+                    return block.content;
+                }
+            }
             return fallbackBlock.content;
         }
 
-        // 计算余弦相似度
-        let dotProduct = 0;
-        let normA = 0;
-        let normB = 0;
-        const len = Math.min(descVector.length, userVector.length);
-        for (let i = 0; i < len; i++) {
-            dotProduct += descVector[i] * userVector[i];
-            normA += descVector[i] * descVector[i];
-            normB += userVector[i] * userVector[i];
-        }
-        const sim = (normA === 0 || normB === 0) ? 0 : dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+        const getThreshold = (block) => Number.isFinite(Number(block.threshold)) ? Number(block.threshold) : 0;
+        const includedContents = [];
+        let hiddenBlocksCount = 0;
 
-        if (context.DEBUG_MODE) {
-            console.log(`[DynamicFold] ${placeholderKey} 上下文相似度: ${sim.toFixed(3)} (目标区块数: ${blocks.length})`);
-        }
-
-        // 匹配折叠阈值
-        for (const block of blocks) {
-            if (sim >= block.threshold) {
-                if (context.DEBUG_MODE) console.log(`[DynamicFold] ${placeholderKey} 命中阈值 >= ${block.threshold}，展开相关内容。`);
-                return block.content;
+        const legacyBlocks = blocks.filter(block => !(typeof block.description === 'string' && block.description.trim()));
+        let activeLegacyBlocks = new Set();
+        if (legacyBlocks.length > 0) {
+            const legacySim = await getPluginSimilarity();
+            const matchedLegacyBlocks = legacyBlocks.filter(block => legacySim >= getThreshold(block));
+            if (matchedLegacyBlocks.length > 0) {
+                activeLegacyBlocks = new Set(matchedLegacyBlocks);
+            } else {
+                const minLegacyThreshold = legacyBlocks.reduce((min, block) => Math.min(min, getThreshold(block)), Infinity);
+                activeLegacyBlocks = new Set(legacyBlocks.filter(block => getThreshold(block) <= minLegacyThreshold));
             }
         }
 
-        return fallbackBlock.content;
+        for (const block of blocks) {
+            const threshold = getThreshold(block);
+            const description = typeof block.description === 'string' ? block.description.trim() : '';
+            const content = block.content;
+
+            if (!description) {
+                if (activeLegacyBlocks.has(block)) {
+                    includedContents.push(content);
+                } else {
+                    hiddenBlocksCount += 1;
+                }
+                continue;
+            }
+
+            const descVector = await getDescriptionVector(description);
+            const sim = cosineSimilarity(descVector, userVector);
+            if (context.DEBUG_MODE) {
+                console.log(`[DynamicFold] ${placeholderKey} 区块描述相似度: ${sim.toFixed(3)} / 阈值 ${threshold.toFixed(3)} / 描述 ${description}`);
+            }
+
+            if (sim >= threshold) {
+                includedContents.push(content);
+            } else {
+                hiddenBlocksCount += 1;
+            }
+        }
+
+        let combinedContent = includedContents.filter(Boolean).join('\n\n---\n\n');
+        if (!combinedContent) {
+            combinedContent = fallbackBlock.content;
+        }
+
+        if (hiddenBlocksCount > 0) {
+            combinedContent += `\n\n*(提示：当前上下文中还隐藏收纳了另外 ${hiddenBlocksCount} 个工具模块分组，您可以通过明确提问或强调相关语境来获得展开。)*`;
+        }
+
+        return combinedContent;
     } catch (e) {
         console.error(`[DynamicFold] 处理动态折叠时发生异常 (${placeholderKey}):`, e.message);
-        // 如果出错或者拿不到索引，安全回退到最精简内容
         return fallbackBlock.content;
     }
 }
@@ -302,7 +375,10 @@ async function replaceOtherVariables(text, model, role, context) {
     let processedText = String(text);
 
     // SarModel 高级预设注入，对 system 角色或 VCPTavern 注入的 user 角色生效
-    if (role === 'system' || (role === 'user' && (processedText.startsWith('[系统提示:]') || processedText.startsWith('[系统邀请指令:]')))) {
+    const systemMarkers = ['[系统提示:]', '[系统邀请指令:]', '[系统通知:]', '[系统通知]'];
+    const isSystemLike = role === 'system' || (role === 'user' && systemMarkers.some(marker => processedText.startsWith(marker)));
+
+    if (isSystemLike) {
         // 查找所有独特的 SarPrompt 占位符，例如 {{SarPrompt1}}, {{SarPrompt2}}
         const sarPlaceholderRegex = /\{\{(SarPrompt\d+)\}\}/g;
         const matches = [...processedText.matchAll(sarPlaceholderRegex)];
@@ -311,22 +387,17 @@ async function replaceOtherVariables(text, model, role, context) {
         for (const placeholder of uniquePlaceholders) {
             // 从 {{SarPrompt4}} 中提取 SarPrompt4
             const promptKey = placeholder.substring(2, placeholder.length - 2);
-            // 从 SarPrompt4 中提取数字 4
-            const numberMatch = promptKey.match(/\d+$/);
-            if (!numberMatch) continue;
-
-            const index = numberMatch[0];
-            const modelKey = `SarModel${index}`;
-
-            const models = process.env[modelKey];
-            let promptValue = process.env[promptKey];
+            
+            // 从 sarPromptManager 中查找匹配的 promptKey
+            const prompts = sarPromptManager.getAllPrompts();
+            const group = prompts.find(g => g.promptKey === promptKey);
             let replacementText = ''; // 默认替换为空字符串
 
-            // 检查模型和提示是否存在
-            if (models && promptValue) {
-                const modelList = models.split(',').map(m => m.trim().toLowerCase());
+            if (group && group.models && group.content) {
+                const modelList = group.models.map(m => m.trim().toLowerCase());
                 // 检查当前模型是否在列表中
                 if (model && modelList.includes(model.toLowerCase())) {
+                    let promptValue = group.content;
                     // 模型匹配，准备注入的文本
                     if (typeof promptValue === 'string' && promptValue.toLowerCase().endsWith('.txt')) {
                         const fileContent = await tvsManager.getContent(promptValue);
@@ -416,6 +487,19 @@ async function replaceOtherVariables(text, model, role, context) {
         }
 
         const individualPluginDescriptions = pluginManager.getIndividualPluginDescriptions();
+        if (processedText.includes('{{VCPDynamicTools}}')) {
+            let dynamicToolsText = '[VCPDynamicTools information unavailable]';
+            try {
+                dynamicToolsText = await dynamicToolRegistry.buildInjection({
+                    messages: context.messages || context.originalMessages || [],
+                    pluginManager,
+                    debugMode: DEBUG_MODE
+                });
+            } catch (error) {
+                console.error('[replaceOtherVariables] Error processing {{VCPDynamicTools}}:', error);
+            }
+            processedText = processedText.replaceAll('{{VCPDynamicTools}}', dynamicToolsText);
+        }
         if (individualPluginDescriptions && individualPluginDescriptions.size > 0) {
             for (const [placeholderKey, description] of individualPluginDescriptions) {
                 processedText = processedText.replaceAll(`{{${placeholderKey}}}`, description || `[${placeholderKey} 信息不可用]`);
@@ -455,15 +539,20 @@ async function replaceOtherVariables(text, model, role, context) {
         }
     }
 
-    const asyncResultPlaceholderRegex = /\{\{VCP_ASYNC_RESULT::([a-zA-Z0-9_.-]+)::([a-zA-Z0-9_-]+)\}\}/g;
+    // 同时兼容标准双花括号、异常三花括号、以及被字符串转义后常见的四花括号格式
+    // 例如：
+    // {{VCP_ASYNC_RESULT::Plugin::id}}
+    // {{{VCP_ASYNC_RESULT::Plugin::id}}}
+    // {{{{VCP_ASYNC_RESULT::Plugin::id}}}}
+    const asyncResultPlaceholderRegex = /\{\{\{\{VCP_ASYNC_RESULT::([a-zA-Z0-9_.-]+)::([a-zA-Z0-9_-]+)\}\}\}\}|\{\{\{VCP_ASYNC_RESULT::([a-zA-Z0-9_.-]+)::([a-zA-Z0-9_-]+)\}\}\}|\{\{VCP_ASYNC_RESULT::([a-zA-Z0-9_.-]+)::([a-zA-Z0-9_-]+)\}\}/g;
     let asyncMatch;
     let tempAsyncProcessedText = processedText;
     const promises = [];
 
     while ((asyncMatch = asyncResultPlaceholderRegex.exec(processedText)) !== null) {
         const placeholder = asyncMatch[0];
-        const pluginName = asyncMatch[1];
-        const requestId = asyncMatch[2];
+        const pluginName = asyncMatch[1] || asyncMatch[3] || asyncMatch[5];
+        const requestId = asyncMatch[2] || asyncMatch[4] || asyncMatch[6];
 
         promises.push(
             (async () => {
