@@ -64,6 +64,9 @@ export type * from './schedule'
 export { dreamApi } from './dream'
 export type * from './dream'
 
+export { emojisApi } from './emojis'
+export type * from './emojis'
+
 export { toolboxApi } from './toolbox'
 export type * from './toolbox'
 
@@ -76,6 +79,9 @@ export type * from './toolList'
 export { dynamicToolsApi } from './dynamicTools'
 export type * from './dynamicTools'
 
+export { semanticRouterApi } from './semanticRouter'
+export type * from './semanticRouter'
+
 export { vcptavernApi } from './vcptavern'
 export type * from './vcptavern'
 
@@ -84,3 +90,7 @@ export type * from './forum'
 
 export { forumAssistantApi } from './forum-assistant'
 export type * from './forum-assistant'
+
+// 插件商店 API
+export { pluginStoreApi } from './pluginStore'
+export type * from './pluginStore'
