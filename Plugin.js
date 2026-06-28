@@ -11,6 +11,7 @@ const chokidar = require('chokidar');
 const { getAuthCode } = require('./modules/captchaDecoder'); // 导入统一的解码函数
 const ToolApprovalManager = require('./modules/toolApprovalManager');
 const { hasFoldMarkers, buildDynamicFoldObject } = require('./modules/foldProtocol');
+const { sanitizeToolResult } = require('./modules/toolResultPrivacyGuard');
 
 const PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const manifestFileName = 'plugin-manifest.json';
@@ -42,6 +43,18 @@ class PluginManager extends EventEmitter {
         this.tdbKnowledgeManager = null; // 冷知识库管理器，等待 server.js 注入
         this.toolApprovalManager = new ToolApprovalManager(path.join(__dirname, 'toolApprovalConfig.json'));
         this.pendingApprovals = new Map(); // requestId -> { resolve, reject, timeoutId }
+    }
+
+    _sanitizeToolResultForAi(result) {
+        try {
+            const privacyConfig = this.toolApprovalManager?.getPrivacyProtectionConfig
+                ? this.toolApprovalManager.getPrivacyProtectionConfig()
+                : { enabled: false };
+            return sanitizeToolResult(result, privacyConfig);
+        } catch (error) {
+            console.error(`[PluginManager] Tool result privacy protection failed, returning original result to avoid breaking tool flow: ${error.message}`);
+            return result;
+        }
     }
 
     setWebSocketServer(wss) {
@@ -670,7 +683,10 @@ class PluginManager extends EventEmitter {
                     initialConfig.Key = process.env.Key;
                     initialConfig.PROJECT_BASE_PATH = this.projectBasePath;
 
-                    const dependencies = { vcpLogFunctions: this.getVCPLogFunctions() };
+                    const dependencies = {
+                        vcpLogFunctions: this.getVCPLogFunctions(),
+                        pluginManager: this
+                    };
 
                     // --- 注入 VectorDBManager ---
                     if (manifest.name === 'RAGDiaryPlugin') {
@@ -858,7 +874,7 @@ class PluginManager extends EventEmitter {
         };
     }
 
-    async processToolCall(toolName, toolArgs, requestIp = null, sourceNode = null) {
+    async processToolCall(toolName, toolArgs, requestIp = null, sourceNode = null, executionOptions = {}) {
         const plugin = this.plugins.get(toolName);
         if (!plugin) {
             throw new Error(`[PluginManager] Plugin "${toolName}" not found for tool call.`);
@@ -1070,7 +1086,11 @@ class PluginManager extends EventEmitter {
                 const logParam = executionParam ? (executionParam.length > 100 ? executionParam.substring(0, 100) + '...' : executionParam) : null;
                 if (this.debugMode) console.log(`[PluginManager] Calling local executePlugin for: ${toolName} with prepared param:`, logParam);
 
-                const pluginOutput = await this.executePlugin(toolName, executionParam, requestIp); // Returns {status, result/error}
+                const pluginOutput = await this.executePlugin(toolName, executionParam, requestIp, executionOptions); // Returns {status, result/error}
+
+                if (pluginOutput.__vcpArcheryNoReplySilent) {
+                    return pluginOutput.result;
+                }
 
                 if (pluginOutput.status === "success") {
                     if (typeof pluginOutput.result === 'string') {
@@ -1106,7 +1126,7 @@ class PluginManager extends EventEmitter {
             finalResultObject.timestamp = _getFormattedLocalTimestamp();
             _filterFuzzyDiff(finalResultObject, _getFormattedLocalTimestamp());
 
-            return finalResultObject;
+            return this._sanitizeToolResultForAi(finalResultObject);
 
         } catch (e) {
             console.error(`[PluginManager processToolCall] Error during execution for plugin ${toolName}:`, e.message);
@@ -1124,11 +1144,11 @@ class PluginManager extends EventEmitter {
                 errorObject.timestamp = _getFormattedLocalTimestamp();
             }
             _filterFuzzyDiff(errorObject, _getFormattedLocalTimestamp());
-            throw new Error(JSON.stringify(errorObject));
+            throw new Error(JSON.stringify(this._sanitizeToolResultForAi(errorObject)));
         }
     }
 
-    async executePlugin(pluginName, inputData, requestIp = null) {
+    async executePlugin(pluginName, inputData, requestIp = null, executionOptions = {}) {
         const plugin = this.plugins.get(pluginName);
         if (!plugin) {
             // This case should ideally be caught by processToolCall before calling executePlugin
@@ -1241,6 +1261,10 @@ class PluginManager extends EventEmitter {
             let processExited = false;
             let initialResponseSent = false; // Flag for async plugins
             const isAsyncPlugin = plugin.pluginType === 'asynchronous';
+            const isArcheryNoReply = isAsyncPlugin && executionOptions?.archeryNoReply === true;
+            const noReplyGraceMs = Number.isFinite(Number(executionOptions?.archeryNoReplyGraceMs))
+                ? Math.max(0, Number(executionOptions.archeryNoReplyGraceMs))
+                : 3000;
 
             const timeoutDuration = plugin.communication.timeout || (isAsyncPlugin ? 1800000 : 60000); // Use manifest timeout, or 30min for async, 1min for sync
 
@@ -1263,6 +1287,30 @@ class PluginManager extends EventEmitter {
                 }
             }, timeoutDuration);
 
+            const resolveArcheryNoReplySilent = (reason) => {
+                if (!isArcheryNoReply || processExited || initialResponseSent) return false;
+                initialResponseSent = true;
+                if (this.debugMode) {
+                    console.log(`[PluginManager executePlugin Internal] Async no-reply plugin "${pluginName}" resolved silently. reason=${reason}`);
+                }
+                resolve({
+                    status: "success",
+                    __vcpArcheryNoReplySilent: true,
+                    result: {
+                        status: "success",
+                        noReply: true,
+                        __vcpArcheryNoReplySilent: true,
+                        toolName: pluginName,
+                        message: `Async no-reply tool "${pluginName}" accepted silently (${reason}).`
+                    }
+                });
+                return true;
+            };
+
+            const noReplyTimerId = isArcheryNoReply ? setTimeout(() => {
+                resolveArcheryNoReplySilent(`no_response_after_${noReplyGraceMs}ms`);
+            }, noReplyGraceMs) : null;
+
             pluginProcess.stdout.setEncoding('utf8');
             pluginProcess.stdout.on('data', (data) => {
                 if (processExited || (isAsyncPlugin && initialResponseSent)) {
@@ -1284,6 +1332,11 @@ class PluginManager extends EventEmitter {
                         if (parsedOutput && (parsedOutput.status === "success" || parsedOutput.status === "error")) {
                             if (isAsyncPlugin) {
                                 if (!initialResponseSent) {
+                                    if (noReplyTimerId) clearTimeout(noReplyTimerId);
+                                    if (isArcheryNoReply && parsedOutput.status === "success") {
+                                        resolveArcheryNoReplySilent('initial_success_json');
+                                        return;
+                                    }
                                     if (this.debugMode) console.log(`[PluginManager executePlugin Internal] Async plugin "${pluginName}" sent initial JSON response. Resolving promise.`);
                                     initialResponseSent = true;
                                     // For async, we resolve with the first valid JSON and let the process continue if it has non-daemon threads.
@@ -1314,6 +1367,7 @@ class PluginManager extends EventEmitter {
 
             pluginProcess.on('error', (err) => {
                 processExited = true; clearTimeout(timeoutId);
+                if (noReplyTimerId) clearTimeout(noReplyTimerId);
                 if (!initialResponseSent) { // Only reject if initial response (for async) or any response (for sync) hasn't been sent
                     reject(new Error(`Failed to start plugin "${pluginName}": ${err.message}`));
                 } else if (this.debugMode) {
@@ -1324,6 +1378,7 @@ class PluginManager extends EventEmitter {
             pluginProcess.on('exit', (code, signal) => {
                 processExited = true;
                 clearTimeout(timeoutId); // Clear the main timeout once the process exits.
+                if (noReplyTimerId) clearTimeout(noReplyTimerId);
 
                 if (isAsyncPlugin && initialResponseSent) {
                     // For async plugins where initial response was already sent, log exit but don't re-resolve/reject.
@@ -1359,7 +1414,23 @@ class PluginManager extends EventEmitter {
                 }
 
                 if (!initialResponseSent) { // Only reject if no response has been sent yet
-                    if (code !== 0) {
+                    if (isArcheryNoReply && code === 0) {
+                        initialResponseSent = true;
+                        if (this.debugMode) {
+                            console.log(`[PluginManager executePlugin Internal] Async no-reply plugin "${pluginName}" exited with code 0 before initial JSON. Resolving silently.`);
+                        }
+                        resolve({
+                            status: "success",
+                            __vcpArcheryNoReplySilent: true,
+                            result: {
+                                status: "success",
+                                noReply: true,
+                                __vcpArcheryNoReplySilent: true,
+                                toolName: pluginName,
+                                message: `Async no-reply tool "${pluginName}" exited successfully before initial JSON.`
+                            }
+                        });
+                    } else if (code !== 0) {
                         let detailedError = `Plugin "${pluginName}" exited with code ${code}.`;
                         if (outputBuffer.trim()) detailedError += ` Stdout: ${outputBuffer.trim().substring(0, 200)}`;
                         if (errorOutput.trim()) detailedError += ` Stderr: ${errorOutput.trim().substring(0, 200)}`;
@@ -1385,17 +1456,33 @@ class PluginManager extends EventEmitter {
         });
     }
 
-    handleApprovalResponse(requestId, approved) {
+    handleApprovalResponse(requestId, approved, reason) {
         const approval = this.pendingApprovals.get(requestId);
         if (approval) {
             this.pendingApprovals.delete(requestId);
             clearTimeout(approval.timeoutId);
+
+            const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+
             if (approved) {
+                if (this.debugMode && normalizedReason) {
+                    console.log(`[PluginManager] Manual approval for ${requestId} included user note: ${normalizedReason.substring(0, 300)}`);
+                }
                 approval.resolve();
             } else if (approval.notifyAiOnReject === false) {
+                if (this.debugMode && normalizedReason) {
+                    console.log(`[PluginManager] Silent manual rejection for ${requestId} included user note hidden from AI: ${normalizedReason.substring(0, 300)}`);
+                }
                 approval.resolve({ silentRejected: true });
             } else {
-                approval.reject(new Error(JSON.stringify({ plugin_error: 'Manual approval was REJECTED by user.' })));
+                const rejectionMessage = normalizedReason
+                    ? `Manual approval was REJECTED by user. User reason: ${normalizedReason}`
+                    : 'Manual approval was REJECTED by user.';
+                approval.reject(new Error(JSON.stringify({
+                    plugin_error: rejectionMessage,
+                    error_type: 'approval_rejected',
+                    rejected_by_user: true
+                })));
             }
             return true;
         }
@@ -1601,6 +1688,292 @@ class PluginManager extends EventEmitter {
         await this.loadPlugins();
         console.log('[PluginManager] Hot reload complete.');
         return this.getPreprocessorOrder();
+    }
+
+    _normalizePluginCommands(manifest) {
+        const commands = manifest?.capabilities?.invocationCommands;
+        if (!Array.isArray(commands)) return [];
+        return commands.map((cmd, index) => {
+            const identifier = cmd.commandIdentifier || cmd.command || cmd.name || `command_${index + 1}`;
+            return {
+                commandIdentifier: cmd.commandIdentifier || null,
+                command: cmd.command || null,
+                name: cmd.name || null,
+                identifier,
+                description: cmd.description || '',
+                example: cmd.example || null
+            };
+        });
+    }
+
+    _summarizePluginRegistryEntry(manifest, enabled, extra = {}) {
+        const isDistributed = !!manifest.isDistributed;
+        const commands = this._normalizePluginCommands(manifest);
+        const placeholderKey = `VCP${manifest.name}`;
+        return {
+            name: manifest.name,
+            displayName: manifest.displayName || manifest.name,
+            description: manifest.description || '',
+            version: manifest.version || null,
+            pluginType: manifest.pluginType || 'unknown',
+            enabled,
+            status: enabled ? 'enabled' : 'disabled',
+            origin: isDistributed ? 'cloud' : 'local',
+            isDistributed,
+            serverId: manifest.serverId || null,
+            requiresAdmin: !!manifest.requiresAdmin,
+            hasApiRoutes: !!manifest.hasApiRoutes,
+            communicationProtocol: manifest.communication?.protocol || null,
+            commandCount: commands.length,
+            commands: commands.map(cmd => cmd.identifier),
+            placeholder: commands.length > 0 ? `{{${placeholderKey}}}` : null,
+            basePath: manifest.basePath || null,
+            manifestFile: extra.manifestFile || (enabled ? manifestFileName : `${manifestFileName}.block`),
+            folderName: extra.folderName || null
+        };
+    }
+
+    async _discoverDisabledPluginManifests() {
+        const disabledPlugins = [];
+        const pluginFolders = await fs.readdir(PLUGIN_DIR, { withFileTypes: true });
+        for (const folder of pluginFolders) {
+            if (!folder.isDirectory()) continue;
+            const pluginPath = path.join(PLUGIN_DIR, folder.name);
+            const blockedManifestPath = path.join(pluginPath, `${manifestFileName}.block`);
+            try {
+                const manifestContent = await fs.readFile(blockedManifestPath, 'utf-8');
+                const manifest = JSON.parse(manifestContent);
+                if (!manifest.name) continue;
+                manifest.basePath = pluginPath;
+                disabledPlugins.push({
+                    manifest,
+                    folderName: folder.name,
+                    manifestPath: blockedManifestPath
+                });
+            } catch (error) {
+                if (error.code !== 'ENOENT' && this.debugMode) {
+                    console.warn(`[PluginManager] Error reading disabled plugin manifest in ${folder.name}: ${error.message}`);
+                }
+            }
+        }
+        return disabledPlugins;
+    }
+
+    async listPluginRegistry() {
+        const pluginDataMap = new Map();
+
+        for (const manifest of this.plugins.values()) {
+            if (!manifest || !manifest.name) continue;
+            pluginDataMap.set(manifest.name, this._summarizePluginRegistryEntry(manifest, true));
+        }
+
+        const disabledPlugins = await this._discoverDisabledPluginManifests();
+        for (const item of disabledPlugins) {
+            if (pluginDataMap.has(item.manifest.name)) continue;
+            pluginDataMap.set(
+                item.manifest.name,
+                this._summarizePluginRegistryEntry(item.manifest, false, {
+                    manifestFile: `${manifestFileName}.block`,
+                    folderName: item.folderName
+                })
+            );
+        }
+
+        const plugins = Array.from(pluginDataMap.values()).sort((a, b) => {
+            if (a.origin !== b.origin) return a.origin.localeCompare(b.origin);
+            if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        return {
+            status: 'success',
+            total: plugins.length,
+            enabledCount: plugins.filter(p => p.enabled).length,
+            disabledCount: plugins.filter(p => !p.enabled).length,
+            cloudCount: plugins.filter(p => p.isDistributed).length,
+            localCount: plugins.filter(p => !p.isDistributed).length,
+            plugins
+        };
+    }
+
+    async getPluginRegistryDetail(pluginName) {
+        const name = String(pluginName || '').trim();
+        if (!name) {
+            throw new Error('pluginName is required.');
+        }
+
+        let manifest = this.plugins.get(name);
+        let enabled = !!manifest;
+        let folderName = manifest?.basePath ? path.basename(manifest.basePath) : null;
+        let manifestFile = manifestFileName;
+
+        if (!manifest) {
+            const disabledPlugins = await this._discoverDisabledPluginManifests();
+            const disabled = disabledPlugins.find(item => item.manifest.name === name);
+            if (!disabled) {
+                throw new Error(`Plugin "${name}" not found.`);
+            }
+            manifest = disabled.manifest;
+            enabled = false;
+            folderName = disabled.folderName;
+            manifestFile = `${manifestFileName}.block`;
+        }
+
+        const commands = this._normalizePluginCommands(manifest);
+        const placeholderKey = `VCP${manifest.name}`;
+        const descriptionEntry = this.individualPluginDescriptions.get(placeholderKey) || null;
+
+        return {
+            status: 'success',
+            plugin: {
+                ...this._summarizePluginRegistryEntry(manifest, enabled, { folderName, manifestFile }),
+                author: manifest.author || null,
+                manifestVersion: manifest.manifestVersion || null,
+                entryPoint: manifest.entryPoint || null,
+                communication: manifest.communication || null,
+                configSchema: manifest.configSchema || null,
+                capabilities: manifest.capabilities || null,
+                commands,
+                placeholderDescription: descriptionEntry,
+                rawManifest: manifest
+            }
+        };
+    }
+
+    async _findLocalPluginManifestPaths(pluginName) {
+        const name = String(pluginName || '').trim();
+        if (!name) {
+            throw new Error('pluginName is required.');
+        }
+
+        const pluginFolders = await fs.readdir(PLUGIN_DIR, { withFileTypes: true });
+        for (const folder of pluginFolders) {
+            if (!folder.isDirectory()) continue;
+
+            const pluginPath = path.join(PLUGIN_DIR, folder.name);
+            const enabledManifestPath = path.join(pluginPath, manifestFileName);
+            const disabledManifestPath = `${enabledManifestPath}.block`;
+
+            for (const candidate of [
+                { manifestPath: enabledManifestPath, enabled: true },
+                { manifestPath: disabledManifestPath, enabled: false }
+            ]) {
+                try {
+                    const manifestContent = await fs.readFile(candidate.manifestPath, 'utf-8');
+                    const manifest = JSON.parse(manifestContent);
+                    if (manifest.name === name) {
+                        return {
+                            pluginPath,
+                            folderName: folder.name,
+                            manifest,
+                            enabled: candidate.enabled,
+                            enabledManifestPath,
+                            disabledManifestPath
+                        };
+                    }
+                } catch (error) {
+                    if (error.code !== 'ENOENT' && this.debugMode) {
+                        console.warn(`[PluginManager] Error checking manifest for ${folder.name}: ${error.message}`);
+                    }
+                }
+            }
+        }
+
+        throw new Error(`Local plugin "${name}" not found.`);
+    }
+
+    _assertPluginToggleAllowed(pluginName, enable, manifest = null) {
+        const toggleAllowedTypes = new Set(['synchronous', 'asynchronous', 'static']);
+        const protectedPlugins = new Set([
+            'PluginManager',
+            'UserAuth',
+            'VCPLog',
+            'VCPInfo',
+            'VCPToolBridge'
+        ]);
+
+        if (!enable && protectedPlugins.has(pluginName)) {
+            throw new Error(`Plugin "${pluginName}" is protected and cannot be disabled by PluginManager.`);
+        }
+
+        if (manifest && !toggleAllowedTypes.has(manifest.pluginType)) {
+            throw new Error(`Plugin "${pluginName}" is type "${manifest.pluginType}". PluginManager can only enable/disable synchronous, asynchronous, and static plugins.`);
+        }
+    }
+
+    async setLocalPluginEnabled(pluginName, enable) {
+        if (typeof enable !== 'boolean') {
+            throw new Error('enable must be a boolean.');
+        }
+
+        const name = String(pluginName || '').trim();
+
+        const loadedManifest = this.plugins.get(name);
+        if (loadedManifest?.isDistributed) {
+            throw new Error(`Plugin "${name}" is a cloud/distributed tool and cannot be enabled or disabled locally.`);
+        }
+
+        const target = await this._findLocalPluginManifestPaths(name);
+        this._assertPluginToggleAllowed(name, enable, target.manifest);
+
+        if (target.manifest.isDistributed) {
+            throw new Error(`Plugin "${name}" is marked as distributed and cannot be toggled locally.`);
+        }
+
+        if (enable && target.enabled) {
+            return {
+                status: 'success',
+                changed: false,
+                message: `插件 ${name} 已经是启用状态。`,
+                plugin: this._summarizePluginRegistryEntry(target.manifest, true, {
+                    folderName: target.folderName,
+                    manifestFile: manifestFileName
+                })
+            };
+        }
+
+        if (!enable && !target.enabled) {
+            return {
+                status: 'success',
+                changed: false,
+                message: `插件 ${name} 已经是禁用状态。`,
+                plugin: this._summarizePluginRegistryEntry(target.manifest, false, {
+                    folderName: target.folderName,
+                    manifestFile: `${manifestFileName}.block`
+                })
+            };
+        }
+
+        if (enable) {
+            await fs.rename(target.disabledManifestPath, target.enabledManifestPath);
+        } else {
+            await fs.rename(target.enabledManifestPath, target.disabledManifestPath);
+        }
+
+        await this.loadPlugins();
+
+        if (this.webSocketServer && typeof this.webSocketServer.broadcastToAdminPanel === 'function') {
+            this.webSocketServer.broadcastToAdminPanel({
+                type: 'plugins-reloaded',
+                message: `Plugin ${name} has been ${enable ? 'enabled' : 'disabled'} by PluginManager.`
+            });
+        }
+
+        const detail = await this.getPluginRegistryDetail(name);
+        return {
+            status: 'success',
+            changed: true,
+            message: `插件 ${name} 已${enable ? '启用' : '禁用'}。`,
+            plugin: detail.plugin
+        };
+    }
+
+    async enableLocalPlugin(pluginName) {
+        return this.setLocalPluginEnabled(pluginName, true);
+    }
+
+    async disableLocalPlugin(pluginName) {
+        return this.setLocalPluginEnabled(pluginName, false);
     }
 
     getPreprocessorOrder() {

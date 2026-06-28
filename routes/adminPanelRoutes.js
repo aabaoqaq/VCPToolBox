@@ -94,6 +94,7 @@ module.exports = function (
   mount("/", "schedules"); // Handles /schedules/*
   mount("/", "rag"); // Handles /rag-tags, /rag-params, /available-clusters, etc.
   mount("/", "agentAssistant"); // Handles /agent-assistant/*
+  mount("/", "openHerPersona"); // Handles /openher-persona/*
   mount("/", "taskAssistant"); // Handles /task-assistant/*
   mount("/", "toolListEditor"); // Handles /tool-list/*
   mount("/", "dynamicTools"); // Handles /dynamic-tools/*
@@ -104,6 +105,9 @@ module.exports = function (
   mount("/", "sarPrompts"); // Handles /sarprompts/*
   mount("/", "emojis"); // Handles /emojis/*
   mount("/", "pluginStore"); // Handles /plugin-store/*
+  mount("/", "bridgeProfiles"); // Handles /bridge-profiles/*
+  mount("/", "multimodalConfig"); // Handles /multimodal-config (JSON 真相源 + 热更新)
+  mount("/", "clawMail"); // Handles /claw-mail/*
 
   return adminApiRouter;
 };

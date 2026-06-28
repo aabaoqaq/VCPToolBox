@@ -11,6 +11,7 @@ export type AppRouteId =
   | "login"
   | "dashboard"
   | "base-config"
+  | "theme-editor"
   | "dynamic-tools-manager"
   | "daily-notes-manager"
   | "knowledge-base-manager"
@@ -21,6 +22,8 @@ export type AppRouteId =
   | "vcptavern-editor"
   | "agent-files-editor"
   | "agent-assistant-config"
+  | "claw-mail-manager"
+  | "agent-emotion-manager"
   | "forum-assistant-config"
   | "agent-scores"
   | "toolbox-manager"
@@ -36,6 +39,7 @@ export type AppRouteId =
   | "server-log-viewer"
   | "semantic-model-router-editor"
   | "final-context-viewer"
+  | "bridge-hijack-config"
   | "placeholder-viewer"
   | "plugins"
   | "plugin-store"
@@ -100,6 +104,16 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     showInSidebar: true,
   },
   {
+    id: "theme-editor",
+    routeName: "ThemeEditor",
+    path: "/theme-editor",
+    title: "主题编辑器",
+    icon: "palette",
+    requiresAuth: true,
+    navGroup: "core",
+    showInSidebar: true,
+  },
+  {
     id: "server-log-viewer",
     routeName: "ServerLogViewer",
     path: "/server-log-viewer",
@@ -129,6 +143,16 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     navGroup: "core",
     showInSidebar: true,
   },
+  {
+    id: "bridge-hijack-config",
+    routeName: "BridgeHijackConfig",
+    path: "/bridge-hijack-config",
+    title: "前端劫持配置",
+    icon: "settings_input_component",
+    requiresAuth: true,
+    navGroup: "core",
+    showInSidebar: true,
+  },
   // ── Agent & 内容 ──
   {
     id: "agent-files-editor",
@@ -146,6 +170,26 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     path: "/agent-assistant-config",
     title: "Agent 通讯配置",
     icon: "diversity_3",
+    requiresAuth: true,
+    navGroup: "agentContent",
+    showInSidebar: true,
+  },
+  {
+    id: "claw-mail-manager",
+    routeName: "ClawMailManager",
+    path: "/claw-mail-manager",
+    title: "Agent 信箱",
+    icon: "mark_email_unread",
+    requiresAuth: true,
+    navGroup: "agentContent",
+    showInSidebar: true,
+  },
+  {
+    id: "agent-emotion-manager",
+    routeName: "AgentEmotionManager",
+    path: "/agent-emotion-manager",
+    title: "Agent 情绪管理",
+    icon: "neurology",
     requiresAuth: true,
     navGroup: "agentContent",
     showInSidebar: true,

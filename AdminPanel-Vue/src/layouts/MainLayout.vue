@@ -35,9 +35,11 @@
           :is-hovering-sidebar="isHoveringSidebar"
           :is-hover-enabled="isHoverEnabled"
           :recent-visits="recentVisits"
+          :sidebar-search-query="sidebarSearchQuery"
           @navigate-to="navigateTo"
           @open-command-palette="openCommandPalette"
           @update:is-hovering-sidebar="isHoveringSidebar = $event"
+          @update:sidebarSearchQuery="sidebarSearchQuery = $event"
         />
       </div>
 
@@ -50,9 +52,6 @@
 
       <!-- 主内容区 -->
       <main ref="contentRef" class="content" id="config-details-container">
-        <!-- 面包屑组件 -->
-        <Breadcrumb />
-
         <section class="unified-page-header">
           <h1>{{ currentPageTitle }}</h1>
         </section>
@@ -79,6 +78,13 @@
     </div>
 
     <FeedbackHost />
+
+    <!-- 沉浸观星模式彩蛋文本 -->
+    <Transition name="immersive-easter-quote">
+      <p v-if="isImmersiveMode" class="immersive-easter-quote" aria-live="polite">
+        让智能链接灵魂与星空。——By VCP
+      </p>
+    </Transition>
 
     <!-- 退出沉浸模式按钮 -->
     <Transition name="immersive-exit-btn">
@@ -120,7 +126,6 @@ import SolarSystemBg from "@/components/SolarSystemBg.vue";
 import GlobalCommandPalette from "@/components/layout/GlobalCommandPalette.vue";
 import TopBar from "@/components/layout/TopBar.vue";
 import Sidebar from "@/components/layout/Sidebar.vue";
-import Breadcrumb from "@/components/layout/Breadcrumb.vue";
 import { useMainLayoutState } from "@/composables/useMainLayoutState";
 import { useAppStore } from "@/stores/app";
 
@@ -135,6 +140,7 @@ const {
   isSystemMenuOpen,
   isUserMenuOpen,
   hasNotifications,
+  sidebarSearchQuery,
   showBackToTop,
   contentRef,
   recentVisits,
@@ -156,7 +162,6 @@ const {
 const navItems = computed(() => appStore.navItems);
 const plugins = computed(() => appStore.plugins);
 const pinnedPluginNames = computed(() => appStore.pinnedPluginNames);
-
 void contentRef;
 </script>
 
@@ -196,24 +201,111 @@ void contentRef;
   position: relative;
   z-index: 1;
   height: calc(
-    var(--app-viewport-height, 100vh) - var(--app-top-bar-height, 60px)
+    var(--app-viewport-height, 100vh) - var(--app-top-bar-height, 48px)
   );
-  margin-top: var(--app-top-bar-height, 60px);
+  margin-top: var(--app-top-bar-height, 48px);
+  background: var(--app-shell-bg);
   transition: opacity 1.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.admin-layout.sidebar-collapsed .container {
+  gap: 12px;
+}
+
 .content {
+  position: relative;
   flex-grow: 1;
-  padding: 30px 40px;
+  padding: 24px 32px;
   box-sizing: border-box;
+  border: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   height: 100%;
+  background: var(--app-content-bg);
+  clip-path: inset(0 round var(--radius-xl));
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--secondary-text) 12%, transparent)
+    transparent;
+  /* 白色主画布；星空保持在全局最底层 */
   /* 不在默认态设置 identity transform，避免创建 stacking context */
   opacity: 1;
   transition:
     opacity 1.6s cubic-bezier(0.4, 0, 0.2, 1),
     transform 2s cubic-bezier(0.4, 0, 0.2, 1),
-    filter 1.8s ease;
+    filter 1.8s ease,
+    border-color var(--transition-fast);
+}
+
+.content:hover {
+  scrollbar-color: color-mix(in srgb, var(--secondary-text) 28%, transparent)
+    transparent;
+}
+
+.content::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-button,
+.content::-webkit-scrollbar-button:single-button,
+.content::-webkit-scrollbar-button:vertical:start,
+.content::-webkit-scrollbar-button:vertical:end,
+.content::-webkit-scrollbar-button:vertical:decrement,
+.content::-webkit-scrollbar-button:vertical:increment {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--secondary-text) 10%, transparent);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-block-width: 18px;
+  border-radius: 999px;
+}
+
+.content:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--secondary-text) 26%, transparent);
+}
+
+.content:hover::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--secondary-text) 42%, transparent);
+}
+
+:global(html:not([data-theme-shell-layout]) .container),
+:global(html[data-theme-shell-layout="inset"] .container) {
+  padding: 4px 8px 4px 0;
+}
+
+:global(html:not([data-theme-shell-layout]) .content),
+:global(html[data-theme-shell-layout="inset"] .content) {
+  height: calc(100% - 8px);
+  margin: 0 0 0 0;
+  border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-overlay-soft);
+}
+
+:global(html[data-theme-shell-layout="sidebar"] .container) {
+  padding: 0;
+  background: transparent;
+}
+
+:global(html[data-theme-shell-layout="sidebar"] .content) {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  clip-path: inset(0 round 0);
+  box-shadow: none;
 }
 
 .sidebar-overlay {
@@ -327,6 +419,63 @@ void contentRef;
   display: none;
 }
 
+/* 沉浸模式彩蛋文本 */
+.immersive-easter-quote {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(72px, 12vh, 132px);
+  z-index: 10000;
+  margin: 0;
+  padding: 12px 22px;
+  max-width: min(720px, calc(100vw - 48px));
+  transform: translateX(-50%);
+  color: color-mix(in srgb, var(--primary-text) 88%, var(--highlight-text));
+  font-size: clamp(18px, 2.8vw, 30px);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.7;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow:
+    0 0 18px color-mix(in srgb, var(--highlight-text) 34%, transparent),
+    0 0 42px color-mix(in srgb, var(--primary-bg) 92%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+
+.immersive-easter-quote-enter-active {
+  transition:
+    opacity 2.4s cubic-bezier(0.22, 1, 0.36, 1) 0.8s,
+    transform 2.8s cubic-bezier(0.22, 1, 0.36, 1) 0.8s,
+    filter 2.4s ease 0.8s;
+}
+
+.immersive-easter-quote-leave-active {
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease,
+    filter 0.5s ease;
+}
+
+.immersive-easter-quote-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(18px) scale(0.98);
+  filter: blur(16px);
+}
+
+.immersive-easter-quote-enter-to,
+.immersive-easter-quote-leave-from {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+  filter: blur(0);
+}
+
+.immersive-easter-quote-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px) scale(0.99);
+  filter: blur(10px);
+}
+
 /* 退出沉浸模式按钮 */
 .exit-immersive-button {
   position: fixed;
@@ -386,7 +535,14 @@ void contentRef;
   z-index: 998;
 }
 
+.unified-page-header {
+  position: relative;
+  overflow: hidden;
+}
+
 .unified-page-header h1 {
+  position: relative;
+  z-index: 1;
   font-size: var(--font-size-title);
   line-height: 1.25;
 }
@@ -451,6 +607,13 @@ void contentRef;
 
   .back-to-top-btn .material-symbols-outlined {
     font-size: var(--font-size-title);
+  }
+
+  .immersive-easter-quote {
+    bottom: 84px;
+    max-width: calc(100vw - 28px);
+    padding: 10px 14px;
+    letter-spacing: 0.04em;
   }
 
   .exit-immersive-button {
