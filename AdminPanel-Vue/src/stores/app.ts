@@ -33,11 +33,37 @@ function comparePluginLabels(a: PluginInfo, b: PluginInfo): number {
   });
 }
 
+function parseThemeStorageValue(value: string): ThemeMode {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed === "dark" || parsed === "light") {
+      return parsed;
+    }
+  } catch {
+    // 兼容旧版裸字符串 localStorage.theme = dark/light
+  }
+
+  if (value === "dark" || value === "light") {
+    return value;
+  }
+
+  return "dark";
+}
+
+export interface ImmersiveCelestialAngle {
+  planet: string;
+  angle: number;
+}
+
 export const useAppStore = defineStore("app", () => {
-  const theme = useLocalStorage<ThemeMode>("theme", "dark");
+  const theme = useLocalStorage<ThemeMode>("theme", "dark", {
+    parser: parseThemeStorageValue,
+    serializer: (value) => value,
+  });
   const resolvedTheme = ref<"dark" | "light">("dark");
   const animationsEnabled = useLocalStorage<boolean>("animationsEnabled", true);
   const isImmersiveMode = ref(false);
+  const immersiveCelestialAngles = ref<Record<string, number>>({});
   const pinnedPluginNames = useLocalStorage<string[]>(
     PINNED_PLUGINS_STORAGE_KEY,
     []
@@ -99,6 +125,12 @@ export const useAppStore = defineStore("app", () => {
   function exitImmersiveMode() {
     isImmersiveMode.value = false;
     document.body.style.overflow = "";
+  }
+
+  function setImmersiveCelestialAngles(angles: ImmersiveCelestialAngle[]) {
+    immersiveCelestialAngles.value = Object.fromEntries(
+      angles.map((item) => [item.planet, item.angle])
+    );
   }
 
   function loadPlugins(pluginList: PluginInfo[]) {
@@ -191,6 +223,7 @@ export const useAppStore = defineStore("app", () => {
     resolvedTheme,
     animationsEnabled,
     isImmersiveMode,
+    immersiveCelestialAngles,
     navItems,
     plugins,
     pluginsLoaded,
@@ -200,6 +233,7 @@ export const useAppStore = defineStore("app", () => {
     toggleAnimations,
     enterImmersiveMode,
     exitImmersiveMode,
+    setImmersiveCelestialAngles,
     loadPlugins,
     refreshPlugins,
     ensurePluginsLoaded,
