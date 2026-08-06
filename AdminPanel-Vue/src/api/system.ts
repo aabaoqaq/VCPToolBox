@@ -23,6 +23,11 @@ import type {
   OneRingConfig,
   OneRingConfigResponse,
   OneRingConfigSaveResponse,
+  OneRingMemoListResponse,
+  OneRingMemoResponse,
+  OneRingMemoStatusResponse,
+  MemoryProfile,
+  MemoryProfileResponse,
   PM2Process,
   PM2ProcessesResponse,
   RawSystemResourcesResponse,
@@ -114,6 +119,20 @@ export const systemApi = {
       uiOptions
     );
     return response.processes ?? [];
+  },
+
+  async getMemoryProfile(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<MemoryProfile> {
+    const response = await requestWithUi<MemoryProfileResponse>(
+      {
+        url: "/admin_api/system-monitor/memory/profile",
+        ...requestContext,
+      },
+      uiOptions
+    );
+    return response.profile;
   },
 
   async getUserAuthCode(
@@ -211,6 +230,73 @@ export const systemApi = {
         url: "/admin_api/onering-config",
         method: "PUT",
         body: config,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async listOneRingMemos(
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<OneRingMemoListResponse> {
+    return requestWithUi<OneRingMemoListResponse>(
+      { url: "/admin_api/onering-memos", ...requestContext },
+      uiOptions
+    );
+  },
+
+  async getOneRingMemo(
+    agentName: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<OneRingMemoResponse> {
+    return requestWithUi<OneRingMemoResponse>(
+      { url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}`, ...requestContext },
+      uiOptions
+    );
+  },
+
+  async saveOneRingMemo(
+    agentName: string,
+    summary: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<OneRingMemoResponse> {
+    return requestWithUi<OneRingMemoResponse>(
+      {
+        url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}`,
+        method: "PUT",
+        body: { summary },
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async getOneRingMemoStatus(
+    agentName: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = DEFAULT_READ_UI_OPTIONS
+  ): Promise<OneRingMemoStatusResponse> {
+    return requestWithUi<OneRingMemoStatusResponse>(
+      {
+        url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}/status`,
+        ...requestContext,
+      },
+      uiOptions
+    );
+  },
+
+  async generateOneRingMemo(
+    agentName: string,
+    requestContext: HttpRequestContext = {},
+    uiOptions: RequestUiOptions = {}
+  ): Promise<OneRingMemoResponse> {
+    return requestWithUi<OneRingMemoResponse>(
+      {
+        url: `/admin_api/onering-memos/${encodeURIComponent(agentName)}/generate`,
+        method: "POST",
         ...requestContext,
       },
       uiOptions

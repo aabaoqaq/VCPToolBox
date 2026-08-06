@@ -118,6 +118,7 @@ const taskScheduler = require('./routes/taskScheduler.js');
 const webSocketServer = require('./WebSocketServer.js'); // 新增 WebSocketServer 引入
 const FileFetcherServer = require('./FileFetcherServer.js'); // 引入新的 FileFetcherServer 模块
 const vcpInfoHandler = require('./vcpInfoHandler.js'); // 引入新的 VCP 信息处理器
+const toolCallRecordStore = require('./modules/toolCallRecordStore.js'); // 工具调用记录独立 SQLite 存储
 const basicAuth = require('basic-auth');
 const cors = require('cors'); // 引入 cors 模块
 
@@ -370,7 +371,15 @@ const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
 const CHAT_LOG_ENABLED = (process.env.CHAT_LOG_ENABLED || "false").toLowerCase() === "true";
 const VCPToolCode = (process.env.VCPToolCode || "false").toLowerCase() === "true"; // 新增：读取VCP工具调用验证码开关
 const SHOW_VCP_OUTPUT = (process.env.ShowVCP || "False").toLowerCase() === "true"; // 读取 ShowVCP 环境变量
-const RAG_MEMO_REFRESH = (process.env.RAGMemoRefresh || "false").toLowerCase() === "true"; // 新增：RAG日记刷新开关
+const REASONING_TO_CONTENT_ENABLED = (process.env.ReasoningToContentEnabled || "false").toLowerCase() === "true";
+const REASONING_TO_CONTENT_TAG = String(process.env.ReasoningToContentTag || "think").trim().toLowerCase() === "thinking"
+    ? "thinking"
+    : "think";
+const REASONING_TO_CONTENT_MODELS = String(process.env.ReasoningToContentModel || "")
+    .split(',')
+    .map(model => model.trim().toLowerCase())
+    .filter(Boolean);
+const RAG_MEMO_REFRESH = (process.env.RAGMemoRefresh || "false").toLowerCase() === "true"; // 新增：传递RAG日记刷新开关
 const ENABLE_ROLE_DIVIDER = (process.env.EnableRoleDivider || "false").toLowerCase() === "true"; // 新增：角色分割开关
 const ENABLE_ROLE_DIVIDER_IN_LOOP = (process.env.EnableRoleDividerInLoop || "false").toLowerCase() === "true"; // 新增：循环栈角色分割开关
 const ROLE_DIVIDER_SYSTEM = (process.env.RoleDividerSystem || "true").toLowerCase() === "true"; // 新增：System角色分割开关
@@ -1171,6 +1180,9 @@ const chatCompletionHandler = new ChatCompletionHandler({
     webSocketServer,
     DEBUG_MODE,
     SHOW_VCP_OUTPUT,
+    reasoningToContentEnabled: REASONING_TO_CONTENT_ENABLED,
+    reasoningToContentTag: REASONING_TO_CONTENT_TAG,
+    reasoningToContentModels: REASONING_TO_CONTENT_MODELS,
     VCPToolCode, // 新增：传递VCP工具调用验证码开关
     RAGMemoRefresh: RAG_MEMO_REFRESH, // 新增：传递RAG日记刷新开关
     enableRoleDivider: ENABLE_ROLE_DIVIDER, // 新增：传递角色分割开关
@@ -1191,6 +1203,7 @@ const chatCompletionHandler = new ChatCompletionHandler({
     maxVCPLoopNonStream: parseInt(process.env.MaxVCPLoopNonStream),
     apiRetries: parseInt(process.env.ApiRetries) || 3, // 新增：API重试次数
     apiRetryDelay: parseInt(process.env.ApiRetryDelay) || 1000, // 新增：API重试延迟
+    apiConnectionTimeoutMs: parseInt(process.env.ApiConnectionTimeoutMs) || 900000, // 单次上游连接/首包超时，默认15分钟
     cachedEmojiLists,
     detectors,
     superDetectors,
@@ -1435,7 +1448,8 @@ const adminPanelRoutes = require('./routes/adminPanelRoutes')(
     semanticModelRouter,
     modelRedirectHandler,
     apiUrl,
-    apiKey
+    apiKey,
+    tdbKnowledgeManager
 );
 
 // 新增：引入 VCP 论坛 API 路由
@@ -1502,6 +1516,10 @@ app.post('/plugin-callback/:pluginName/:taskId', async (req, res) => {
 
 
 async function initialize() {
+    console.log('开始初始化工具调用记录存储...');
+    toolCallRecordStore.initialize();
+    console.log('工具调用记录存储初始化完成。');
+
     console.log('开始初始化向量数据库...');
     await knowledgeBaseManager.initialize(); // 在加载插件之前启动，确保服务就绪
     console.log('向量数据库初始化完成。');
@@ -1607,6 +1625,10 @@ async function initialize() {
     }
     if (DEBUG_MODE) console.log('表情包列表缓存加载完成。');
 
+    // 所有插件运行时、服务路由和静态任务就绪后再启动清单监听，
+    // 避免启动阶段的文件写入触发多余重载。
+    pluginManager.startPluginWatcher();
+
     // 初始化通用任务调度器
     taskScheduler.initialize(pluginManager, webSocketServer, DEBUG_MODE);
 }
@@ -1689,10 +1711,12 @@ async function startServer() {
         if (DEBUG_MODE) console.log('[Server] Initializing WebSocketServer...');
         const vcpKeyValue = pluginManager.getResolvedPluginConfigValue('VCPLog', 'VCP_Key') || process.env.VCP_Key;
         const distributedMusicPlaylistSyncEnabled = (process.env.DISTRIBUTED_MUSIC_PLAYLIST_SYNC_ENABLED || 'false').toLowerCase() === 'true';
+        const webSocketHeartbeatEnabled = (process.env.WEBSOCKET_HEARTBEAT_ENABLED || 'false').toLowerCase() === 'true';
         webSocketServer.initialize(server, {
             debugMode: DEBUG_MODE,
             vcpKey: vcpKeyValue,
-            distributedMusicPlaylistSyncEnabled
+            distributedMusicPlaylistSyncEnabled,
+            heartbeatEnabled: webSocketHeartbeatEnabled
         });
 
         // --- 注入依赖 ---
@@ -1787,6 +1811,12 @@ async function gracefulShutdown(exitCode = 0, reason = 'signal') {
                 console.log(`[Server][ShutdownTrace] Phase 8/10 - pluginManager.shutdownAllPlugins done`);
             } else {
                 console.log(`[Server][ShutdownTrace] Phase 8/10 - pluginManager shutdown skipped`);
+            }
+
+            if (toolCallRecordStore) {
+                console.log(`[Server][ShutdownTrace] Phase 8/10 - toolCallRecordStore.shutdown start`);
+                toolCallRecordStore.shutdown();
+                console.log(`[Server][ShutdownTrace] Phase 8/10 - toolCallRecordStore.shutdown done`);
             }
 
             if (tdbKnowledgeManager) {

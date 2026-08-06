@@ -1,4 +1,7 @@
-import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from "vue-router";
+import type {
+  RouteLocationNormalizedLoaded,
+  RouteLocationRaw,
+} from "vue-router";
 import type { PluginInfo } from "@/types/api.plugin";
 
 export type AppRouteGroup =
@@ -22,6 +25,8 @@ export type AppRouteId =
   | "vcptavern-editor"
   | "agent-files-editor"
   | "agent-assistant-config"
+  | "onering-manager"
+  | "agent-timeline-manager"
   | "claw-mail-manager"
   | "agent-emotion-manager"
   | "forum-assistant-config"
@@ -32,6 +37,7 @@ export type AppRouteId =
   | "tool-list-editor"
   | "preprocessor-order-manager"
   | "tool-approval-manager"
+  | "tool-call-records-manager"
   | "thinking-chains-editor"
   | "rag-tuning"
   | "schedule-manager"
@@ -41,6 +47,7 @@ export type AppRouteId =
   | "final-context-viewer"
   | "bridge-hijack-config"
   | "placeholder-viewer"
+  | "placeholder-explorer-manager"
   | "plugins"
   | "plugin-store"
   | "plugin-config";
@@ -170,6 +177,26 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     path: "/agent-assistant-config",
     title: "Agent 通讯配置",
     icon: "diversity_3",
+    requiresAuth: true,
+    navGroup: "agentContent",
+    showInSidebar: true,
+  },
+  {
+    id: "onering-manager",
+    routeName: "OneRingManager",
+    path: "/onering-manager",
+    title: "OneRing 管理",
+    icon: "all_inclusive",
+    requiresAuth: true,
+    navGroup: "agentContent",
+    showInSidebar: true,
+  },
+  {
+    id: "agent-timeline-manager",
+    routeName: "AgentTimeLineManager",
+    path: "/agent-timeline-manager",
+    title: "Agent TimeLine",
+    icon: "timeline",
     requiresAuth: true,
     navGroup: "agentContent",
     showInSidebar: true,
@@ -397,6 +424,16 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     showInSidebar: true,
   },
   {
+    id: "tool-call-records-manager",
+    routeName: "ToolCallRecordsManager",
+    path: "/tool-call-records-manager",
+    title: "插件调用记录管理",
+    icon: "receipt_long",
+    requiresAuth: true,
+    navGroup: "toolsPlugins",
+    showInSidebar: true,
+  },
+  {
     id: "plugins",
     routeName: "PluginsHub",
     path: "/plugins",
@@ -422,6 +459,16 @@ export const APP_ROUTE_MANIFEST: readonly AppRouteMeta[] = [
     path: "/placeholder-viewer",
     title: "占位符查看器",
     icon: "view_list",
+    requiresAuth: true,
+    navGroup: "toolsPlugins",
+    showInSidebar: true,
+  },
+  {
+    id: "placeholder-explorer-manager",
+    routeName: "PlaceholderExplorerManager",
+    path: "/placeholder-explorer-manager",
+    title: "占位符索引管理",
+    icon: "account_tree",
     requiresAuth: true,
     navGroup: "toolsPlugins",
     showInSidebar: true,
@@ -454,7 +501,9 @@ const APP_ROUTE_BY_PATH = new Map(
 );
 
 export function getAppRouteMetaById(routeId: AppRouteId): AppRouteMeta {
-  return APP_ROUTE_BY_ID.get(routeId) ?? APP_ROUTE_BY_ID.get(APP_DEFAULT_ROUTE_ID)!;
+  return (
+    APP_ROUTE_BY_ID.get(routeId) ?? APP_ROUTE_BY_ID.get(APP_DEFAULT_ROUTE_ID)!
+  );
 }
 
 export function isAppRouteId(value: string): value is AppRouteId {
