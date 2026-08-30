@@ -42,6 +42,39 @@ function getFormattedLocalTimestamp() {
     return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
 }
 
+function getCaseInsensitiveToolArg(toolArgs, ...candidateNames) {
+    if (!toolArgs || typeof toolArgs !== 'object' || Array.isArray(toolArgs)) {
+        return undefined;
+    }
+
+    for (const name of candidateNames) {
+        if (Object.prototype.hasOwnProperty.call(toolArgs, name) && toolArgs[name] !== undefined) {
+            return toolArgs[name];
+        }
+    }
+
+    const normalizedNames = candidateNames.map(name => String(name).toLowerCase());
+    for (const [key, value] of Object.entries(toolArgs)) {
+        if (value !== undefined && normalizedNames.includes(key.toLowerCase())) {
+            return value;
+        }
+    }
+
+    return undefined;
+}
+
+function buildToolChangePreview(toolArgs) {
+    // 新字段优先；旧字段及任意键名大小写均兼容，让旧 Agent 提示词也能获得审核 diff。
+    const target = getCaseInsensitiveToolArg(toolArgs, 'target', 'searchString');
+    const replace = getCaseInsensitiveToolArg(toolArgs, 'replace', 'replaceString');
+
+    if (typeof target !== 'string' || typeof replace !== 'string') {
+        return null;
+    }
+
+    return { target, replace };
+}
+
 function filterFuzzyDiff(resultObj, timestamp) {
     if (
         resultObj &&
@@ -268,27 +301,47 @@ class PluginManager extends EventEmitter {
      * Linux/macOS 上使用负 PID 发送信号给进程组，或回退到普通 SIGKILL。
      */
     _killProcessTree(pid, pluginName) {
-        if (!pid) return;
-        try {
-            if (process.platform === 'win32') {
-                // Windows: taskkill /T (tree kill) /F (force) /PID
-                spawn('taskkill', ['/T', '/F', '/PID', pid.toString()], {
-                    windowsHide: true,
-                    stdio: 'ignore'
-                });
-                if (this.debugMode) console.log(`[PluginManager] Sent taskkill /T /F /PID ${pid} for plugin "${pluginName}"`);
-            } else {
-                // Unix: 尝试杀死进程组（负 PID）
-                try {
-                    process.kill(-pid, 'SIGKILL');
-                } catch (e) {
-                    // 如果进程组不存在，回退到杀单个进程
-                    try { process.kill(pid, 'SIGKILL'); } catch (e2) { /* 进程可能已退出 */ }
-                }
-                if (this.debugMode) console.log(`[PluginManager] Sent SIGKILL to process group -${pid} for plugin "${pluginName}"`);
+        if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return;
+        const normalizedPid = Number(pid);
+
+        if (process.platform === 'win32') {
+            // Windows 没有 POSIX 进程组；taskkill /T 是系统原生的递归进程树终止方式。
+            const killer = spawn('taskkill', ['/T', '/F', '/PID', String(normalizedPid)], {
+                windowsHide: true,
+                stdio: 'ignore'
+            });
+            killer.once('error', error => {
+                console.warn(
+                    `[PluginManager] taskkill failed for plugin "${pluginName}" (PID: ${normalizedPid}): ${error.message}`
+                );
+                try { process.kill(normalizedPid, 'SIGKILL'); } catch (_) { /* process already exited */ }
+            });
+            if (this.debugMode) {
+                console.log(`[PluginManager] Sent taskkill /T /F /PID ${normalizedPid} for plugin "${pluginName}"`);
             }
-        } catch (err) {
-            console.warn(`[PluginManager] Failed to kill process tree for plugin "${pluginName}" (PID: ${pid}): ${err.message}`);
+            return;
+        }
+
+        // Linux/macOS: plugin children are spawned as detached process-group leaders.
+        // Sending to a negative PID therefore terminates the shell wrapper and every descendant.
+        try {
+            process.kill(-normalizedPid, 'SIGKILL');
+            if (this.debugMode) {
+                console.log(`[PluginManager] Sent SIGKILL to process group -${normalizedPid} for plugin "${pluginName}"`);
+            }
+        } catch (groupError) {
+            try {
+                process.kill(normalizedPid, 'SIGKILL');
+                if (this.debugMode) {
+                    console.log(`[PluginManager] Process group kill failed; killed PID ${normalizedPid} for plugin "${pluginName}"`);
+                }
+            } catch (processError) {
+                if (processError.code !== 'ESRCH' && this.debugMode) {
+                    console.warn(
+                        `[PluginManager] Failed to kill plugin "${pluginName}" (PID: ${normalizedPid}): ${processError.message}`
+                    );
+                }
+            }
         }
     }
 
@@ -312,7 +365,13 @@ class PluginManager extends EventEmitter {
 
 
             const [command, ...args] = plugin.entryPoint.command.split(' ');
-            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess, windowsHide: true });
+            const pluginProcess = spawn(command, args, {
+                cwd: plugin.basePath,
+                shell: true,
+                env: envForProcess,
+                windowsHide: true,
+                detached: process.platform !== 'win32'
+            });
             let output = '';
             let errorOutput = '';
             let processExited = false;
@@ -1205,6 +1264,7 @@ class PluginManager extends EventEmitter {
             // 发送审核请求到管理面板
             if (this.webSocketServer) {
                 const approvalTtlMs = this.toolApprovalManager.getTimeoutMs();
+                const changePreview = buildToolChangePreview(pluginSpecificArgs);
                 const approvalRequest = {
                     type: 'tool_approval_request',
                     data: {
@@ -1212,6 +1272,8 @@ class PluginManager extends EventEmitter {
                         toolName,
                         maid: maidNameFromArgs,
                         args: pluginSpecificArgs,
+                        // 提供稳定的文件变更预览协议，前端无需了解各插件的新旧参数别名。
+                        ...(changePreview ? { changePreview } : {}),
                         timestamp: getFormattedLocalTimestamp(),
                         approvalTtlMs // 同步给 VCPLog 补发缓存使用,确保超时后能自动清除
                     }
@@ -1548,7 +1610,13 @@ class PluginManager extends EventEmitter {
             const [command, ...args] = plugin.entryPoint.command.split(' ');
             if (this.debugMode) console.log(`[PluginManager executePlugin Internal] Attempting to spawn command: "${command}" with args: [${args.join(', ')}] in cwd: ${plugin.basePath}`);
 
-            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: finalEnv, windowsHide: true });
+            const pluginProcess = spawn(command, args, {
+                cwd: plugin.basePath,
+                shell: true,
+                env: finalEnv,
+                windowsHide: true,
+                detached: process.platform !== 'win32'
+            });
 
 
             let outputBuffer = ''; // Buffer to accumulate data chunks

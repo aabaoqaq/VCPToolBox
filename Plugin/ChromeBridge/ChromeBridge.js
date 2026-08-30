@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
 const pluginManager = require('../../Plugin.js');
 const browserRuntimeManager = require('../../modules/browserRuntimeManager.js');
 
@@ -54,6 +55,17 @@ const connectedChromes = new Map();
 // 存储等待响应的命令
 // key: requestId, value: { resolve, reject, timeout, waitForPageInfo }
 const pendingCommands = new Map();
+let urlfetchConfigWriteQueue = Promise.resolve();
+
+const URLFETCH_COOKIE_SYNC_LIMITS = {
+    maxRequestBytes: 2 * 1024 * 1024,
+    maxCookies: 5000,
+    maxCookieNameLength: 256,
+    maxCookieValueLength: 8192,
+    maxCookieBytes: 1.5 * 1024 * 1024,
+    maxPageUrlLength: 2048,
+    maxSiteKeyLength: 253
+};
 
 const HIGH_PRIVILEGE_COMMANDS = new Set([
     'execute_script',
@@ -121,6 +133,324 @@ function isOpen(ws) {
     return ws && ws.readyState === 1;
 }
 
+function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+function normalizeSiteKey(value) {
+    return String(value || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+}
+
+function isValidSiteKey(value) {
+    const siteKey = normalizeSiteKey(value);
+    if (!siteKey || siteKey.length > URLFETCH_COOKIE_SYNC_LIMITS.maxSiteKeyLength) return false;
+    if (siteKey.includes(':') || siteKey.includes('/') || siteKey.includes('\\') || siteKey.includes('..')) return false;
+    return siteKey.split('.').every(label =>
+        label.length > 0 &&
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label)
+    );
+}
+
+function parseJsonObjectWithoutDuplicateKeys(rawValue) {
+    const parsed = JSON.parse(rawValue);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('FETCH_COOKIES_RAW_MULTI 必须是 JSON 对象');
+    }
+
+    const source = String(rawValue);
+    let index = 0;
+    const skipWhitespace = () => {
+        while (/\s/.test(source[index] || '')) index += 1;
+    };
+    const readString = () => {
+        const start = index;
+        if (source[index] !== '"') throw new Error('FETCH_COOKIES_RAW_MULTI JSON 对象键格式无效');
+        index += 1;
+        let escaped = false;
+        while (index < source.length) {
+            const char = source[index++];
+            if (escaped) {
+                escaped = false;
+            } else if (char === '\\') {
+                escaped = true;
+            } else if (char === '"') {
+                return JSON.parse(source.slice(start, index));
+            }
+        }
+        throw new Error('FETCH_COOKIES_RAW_MULTI JSON 字符串未闭合');
+    };
+    const skipValue = () => {
+        const start = index;
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        while (index < source.length) {
+            const char = source[index];
+            if (inString) {
+                index += 1;
+                if (escaped) escaped = false;
+                else if (char === '\\') escaped = true;
+                else if (char === '"') inString = false;
+                continue;
+            }
+            if (char === '"') {
+                inString = true;
+                index += 1;
+                continue;
+            }
+            if (char === '{' || char === '[') depth += 1;
+            if (char === '}' || char === ']') {
+                if (depth === 0) break;
+                depth -= 1;
+            }
+            if (depth === 0 && (char === ',' || char === '}')) break;
+            index += 1;
+        }
+        return source.slice(start, index).trim();
+    };
+
+    skipWhitespace();
+    if (source[index++] !== '{') throw new Error('FETCH_COOKIES_RAW_MULTI 必须是 JSON 对象');
+    const seenKeys = new Set();
+    skipWhitespace();
+    while (source[index] !== '}') {
+        const key = readString();
+        const normalizedKey = normalizeSiteKey(key);
+        if (seenKeys.has(normalizedKey)) {
+            throw new Error('FETCH_COOKIES_RAW_MULTI 存在重复域名配置项');
+        }
+        seenKeys.add(normalizedKey);
+        skipWhitespace();
+        if (source[index++] !== ':') throw new Error('FETCH_COOKIES_RAW_MULTI JSON 对象缺少冒号');
+        const rawEntryValue = skipValue();
+        if (typeof parsed[key] !== 'string') {
+            throw new Error(`FETCH_COOKIES_RAW_MULTI 域名 ${key} 的值必须是字符串`);
+        }
+        if (!rawEntryValue) throw new Error('FETCH_COOKIES_RAW_MULTI JSON 对象值不能为空');
+        skipWhitespace();
+        if (source[index] === ',') {
+            index += 1;
+            skipWhitespace();
+        } else if (source[index] !== '}') {
+            throw new Error('FETCH_COOKIES_RAW_MULTI JSON 对象格式无效');
+        }
+    }
+    return parsed;
+}
+
+function getUrlFetchConfigPath() {
+    const projectBasePath = pluginConfig.PROJECT_BASE_PATH || process.env.PROJECT_BASE_PATH || path.resolve(__dirname, '../..');
+    return path.join(projectBasePath, 'Plugin', 'UrlFetch', 'config.env');
+}
+
+function getEnvAssignmentLines(content, key) {
+    const pattern = new RegExp(`^([ \\t]*)${key}[ \\t]*=[^\\r\\n]*$`, 'gm');
+    return Array.from(String(content || '').matchAll(pattern));
+}
+
+function getInlineEnvComment(line, equalsIndex) {
+    let inDoubleQuote = false;
+    let inSingleQuote = false;
+    let escaped = false;
+    let jsonDepth = 0;
+
+    for (let index = equalsIndex + 1; index < line.length; index += 1) {
+        const char = line[index];
+        if (inDoubleQuote || inSingleQuote) {
+            if (escaped) {
+                escaped = false;
+            } else if (char === '\\') {
+                escaped = true;
+            } else if ((inDoubleQuote && char === '"') || (inSingleQuote && char === "'")) {
+                inDoubleQuote = false;
+                inSingleQuote = false;
+            }
+            continue;
+        }
+        if (char === '"') {
+            inDoubleQuote = true;
+        } else if (char === "'") {
+            inSingleQuote = true;
+        } else if (char === '{' || char === '[') {
+            jsonDepth += 1;
+        } else if (char === '}' || char === ']') {
+            jsonDepth = Math.max(0, jsonDepth - 1);
+        } else if (char === '#' && jsonDepth === 0 && /\s/.test(line[index - 1] || '')) {
+            return line.slice(index).trim();
+        }
+    }
+    return '';
+}
+
+async function updateUrlFetchCookiesConfig(siteKey, cookies) {
+    const configPath = getUrlFetchConfigPath();
+    let content = '';
+    let fileMode = null;
+    try {
+        content = await fs.promises.readFile(configPath, 'utf8');
+        fileMode = (await fs.promises.stat(configPath)).mode;
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+    }
+
+    const assignments = getEnvAssignmentLines(content, 'FETCH_COOKIES_RAW_MULTI');
+    if (assignments.length > 1) {
+        throw new Error('config.env 中存在重复的 FETCH_COOKIES_RAW_MULTI 配置项');
+    }
+
+    let cookieMap = {};
+    if (assignments.length === 1) {
+        const parsedEnv = dotenv.parse(content);
+        const rawJson = parsedEnv.FETCH_COOKIES_RAW_MULTI;
+        if (rawJson && rawJson.trim()) {
+            cookieMap = parseJsonObjectWithoutDuplicateKeys(rawJson);
+        }
+    }
+
+    const normalizedSiteKey = normalizeSiteKey(siteKey);
+    let existingKey = Object.keys(cookieMap).find(key => normalizeSiteKey(key) === normalizedSiteKey);
+    if (existingKey) {
+        cookieMap[existingKey] = cookies;
+    } else {
+        cookieMap[normalizedSiteKey] = cookies;
+    }
+
+    const serialized = JSON.stringify(cookieMap);
+    let updatedContent;
+    if (assignments.length === 1) {
+        const match = assignments[0];
+        const lineStart = match.index;
+        const lineEnd = lineStart + match[0].length;
+        const equalsIndex = match[0].indexOf('=');
+        const inlineComment = getInlineEnvComment(match[0], equalsIndex);
+        const preservedComment = inlineComment ? ` ${inlineComment}` : '';
+        updatedContent = `${content.slice(0, lineStart)}${match[1]}FETCH_COOKIES_RAW_MULTI=${serialized}${preservedComment}${content.slice(lineEnd)}`;
+    } else {
+        const newline = content.includes('\r\n') ? '\r\n' : '\n';
+        const separator = content.length === 0 || content.endsWith('\n') ? '' : newline;
+        updatedContent = `${content}${separator}FETCH_COOKIES_RAW_MULTI=${serialized}${newline}`;
+    }
+
+    const tempPath = `${configPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    try {
+        await fs.promises.writeFile(tempPath, updatedContent, {
+            encoding: 'utf8',
+            mode: fileMode || 0o600
+        });
+        if (fileMode) await fs.promises.chmod(tempPath, fileMode);
+        await fs.promises.rename(tempPath, configPath);
+    } catch (error) {
+        try {
+            await fs.promises.unlink(tempPath);
+        } catch (_) {
+            // ignore cleanup errors
+        }
+        throw error;
+    }
+}
+
+function enqueueUrlFetchConfigUpdate(task) {
+    const operation = urlfetchConfigWriteQueue.then(task, task);
+    urlfetchConfigWriteQueue = operation.catch(() => {});
+    return operation;
+}
+
+function sendUrlFetchCookieSyncResult(entry, data) {
+    if (!isOpen(entry?.ws)) return;
+    entry.ws.send(JSON.stringify({
+        type: 'urlfetch_cookie_sync_result',
+        data
+    }));
+}
+
+async function handleUrlFetchCookieSync(clientId, data = {}) {
+    const entry = connectedChromes.get(clientId);
+    const requestId = data.requestId;
+    if (!entry || !isOpen(entry.ws)) return;
+
+    const fail = (error, code = 'URLFETCH_COOKIE_SYNC_REJECTED') => {
+        sendUrlFetchCookieSyncResult(entry, {
+            requestId: isUuid(requestId) ? requestId : null,
+            status: 'error',
+            code,
+            error
+        });
+    };
+
+    const serializedRequest = JSON.stringify(data);
+    if (Buffer.byteLength(serializedRequest, 'utf8') > URLFETCH_COOKIE_SYNC_LIMITS.maxRequestBytes) {
+        fail('Cookie 同步请求过大', 'URLFETCH_COOKIE_SYNC_TOO_LARGE');
+        return;
+    }
+    if (!isUuid(requestId)) {
+        fail('requestId 无效', 'INVALID_REQUEST_ID');
+        return;
+    }
+
+    let pageUrl;
+    try {
+        pageUrl = new URL(String(data.pageUrl || ''));
+    } catch (_) {
+        fail('pageUrl 无效', 'INVALID_PAGE_URL');
+        return;
+    }
+    const protocol = pageUrl.protocol.toLowerCase();
+    const pageHost = pageUrl.hostname.toLowerCase().replace(/\.$/, '');
+    const siteKey = normalizeSiteKey(data.siteKey);
+    if (!['http:', 'https:'].includes(protocol) || !pageHost || String(data.pageUrl).length > URLFETCH_COOKIE_SYNC_LIMITS.maxPageUrlLength) {
+        fail('仅支持有效的 HTTP/HTTPS pageUrl', 'INVALID_PAGE_URL');
+        return;
+    }
+    if (!isValidSiteKey(siteKey) || !(pageHost === siteKey || pageHost.endsWith(`.${siteKey}`))) {
+        fail('siteKey 不是当前页面主机名或其合法父域名', 'INVALID_SITE_KEY');
+        return;
+    }
+    if (!Array.isArray(data.cookies) || data.cookies.length === 0 || data.cookies.length > URLFETCH_COOKIE_SYNC_LIMITS.maxCookies) {
+        fail('Cookie 数组数量无效', 'INVALID_COOKIE_ARRAY');
+        return;
+    }
+
+    let cookieBytes = 0;
+    const cookiePairs = [];
+    for (const cookie of data.cookies) {
+        if (!cookie || typeof cookie !== 'object' || Array.isArray(cookie)) {
+            fail('Cookie 项格式无效', 'INVALID_COOKIE');
+            return;
+        }
+        const name = String(cookie.name ?? '');
+        const value = String(cookie.value ?? '');
+        if (!name || name.length > URLFETCH_COOKIE_SYNC_LIMITS.maxCookieNameLength ||
+            value.length > URLFETCH_COOKIE_SYNC_LIMITS.maxCookieValueLength ||
+            /[\r\n;]/.test(name)) {
+            fail('Cookie 名称或值长度/格式无效', 'INVALID_COOKIE');
+            return;
+        }
+        const pair = `${name}=${value}`;
+        cookieBytes += Buffer.byteLength(pair, 'utf8') + 2;
+        if (cookieBytes > URLFETCH_COOKIE_SYNC_LIMITS.maxCookieBytes) {
+            fail('Cookie 内容过大', 'URLFETCH_COOKIE_SYNC_TOO_LARGE');
+            return;
+        }
+        cookiePairs.push(pair);
+    }
+
+    const cookieString = cookiePairs.join('; ');
+    try {
+        await enqueueUrlFetchConfigUpdate(() => updateUrlFetchCookiesConfig(siteKey, cookieString));
+        sendUrlFetchCookieSyncResult(entry, {
+            requestId,
+            status: 'success',
+            siteKey,
+            cookieCount: data.cookies.length,
+            updatedAt: nowIso()
+        });
+    } catch (error) {
+        console.error(`[ChromeBridge] UrlFetch Cookie 配置写入失败 (${error.code || 'CONFIG_WRITE_ERROR'}): ${error.message}`);
+        fail(error.message || 'UrlFetch Cookie 配置写入失败', 'URLFETCH_CONFIG_WRITE_FAILED');
+    }
+}
+
 function getConnection(clientIdOrEntry) {
     if (!clientIdOrEntry) return null;
     if (typeof clientIdOrEntry === 'object' && clientIdOrEntry.ws) return clientIdOrEntry;
@@ -144,13 +474,25 @@ function registerRoutes(app, config, projectBasePath) {
     }
 }
 
+function isTrustedManagedClient(entry) {
+    return entry?.clientKind === 'managed' &&
+        (entry.managedTokenValid === true || entry.manualManagedSelection === true);
+}
+
 function updateClientFromHello(entry, helloData = {}) {
     const declaredKind = normalizeClientKind(helloData.clientKind);
     const tokenValid = declaredKind === 'managed' && browserRuntimeManager.validateManagedToken(helloData.managedToken);
+    // WebSocket 在进入 ChromeBridge 前已经通过 VCP Key 鉴权。人工声明还要求
+    // 用户在扩展 Popup 中明确选择 Managed，不依赖 Chromium 的配置预注入。
+    const manualManagedSelection = declaredKind === 'managed' &&
+        helloData.manualManagedSelection === true;
 
-    entry.clientKind = tokenValid ? 'managed' : (declaredKind === 'managed' ? 'user' : declaredKind);
+    entry.clientKind = (tokenValid || manualManagedSelection)
+        ? 'managed'
+        : (declaredKind === 'managed' ? 'user' : declaredKind);
     entry.managedTokenValid = tokenValid;
-    entry.permissionLevel = (tokenValid || entry.clientKind === 'agent') ? 'high' : 'restricted';
+    entry.manualManagedSelection = manualManagedSelection;
+    entry.permissionLevel = (isTrustedManagedClient(entry) || entry.clientKind === 'agent') ? 'high' : 'restricted';
     entry.protocolVersion = Number.parseInt(helloData.protocolVersion, 10) || 1;
     entry.capabilities = Array.isArray(helloData.capabilities) ? helloData.capabilities : [];
     entry.snapshotBackends = Array.isArray(helloData.snapshotBackends) ? helloData.snapshotBackends : [];
@@ -173,7 +515,7 @@ function updateClientFromHello(entry, helloData = {}) {
         browserRuntimeManager.touchManagedBrowser();
     }
 
-    console.log(`[ChromeBridge] 🤝 clientHello: ${entry.clientId}, protocol=v${entry.protocolVersion}, kind=${entry.clientKind}, permission=${entry.permissionLevel}, tokenValid=${entry.managedTokenValid}`);
+    console.log(`[ChromeBridge] 🤝 clientHello: ${entry.clientId}, protocol=v${entry.protocolVersion}, kind=${entry.clientKind}, permission=${entry.permissionLevel}, tokenValid=${entry.managedTokenValid}, manualManaged=${entry.manualManagedSelection}`);
 }
 
 // WebSocketServer调用：新Chrome客户端连接
@@ -195,6 +537,7 @@ function handleNewClient(ws) {
         featureSettings: {},
         permissionLevel: 'restricted',
         managedTokenValid: false,
+        manualManagedSelection: false,
         activeTabInfo: null,
         lastPageInfo: null,
         extensionVersion: null,
@@ -232,6 +575,13 @@ function handleClientMessage(clientId, message) {
     const entry = connectedChromes.get(clientId);
     if (entry) {
         entry.lastSeenAt = nowIso();
+    }
+
+    if (message?.type === 'urlfetch_cookie_sync') {
+        // WebSocketServer 已在连接建立时完成 VCP_Key 鉴权；此处只接受已登记且仍打开的连接。
+        if (!entry || !isOpen(entry.ws)) return;
+        void handleUrlFetchCookieSync(clientId, message.data || {});
+        return;
     }
 
     if (message.type === 'clientHello') {
@@ -273,6 +623,8 @@ function handleClientMessage(clientId, message) {
                 scrollContext: data.scrollContext || null,
                 snapshotDiff: data.snapshotDiff || null,
                 pageGraph: data.pageGraph || null,
+                images: Array.isArray(data.images) ? data.images : [],
+                imageCount: Number(data.imageCount) || (Array.isArray(data.images) ? data.images.length : 0),
                 agentView: data.agentView || {
                     format: 'legacy-markdown',
                     mode: 'compatibility',
@@ -330,7 +682,9 @@ function handleClientMessage(clientId, message) {
                         scrollContext: entry.lastPageInfo.scrollContext,
                         snapshotDiff: entry.lastPageInfo.snapshotDiff,
                         redaction: entry.lastPageInfo.redaction,
-                        elementCount: entry.lastPageInfo.elementCount
+                        elementCount: entry.lastPageInfo.elementCount,
+                        imageCount: entry.lastPageInfo.imageCount,
+                        images: entry.lastPageInfo.images
                     } : null
                 });
                 pendingCommands.delete(requestId);
@@ -356,6 +710,8 @@ function buildCommandFromParams(params, suffix = '') {
         url: params[`url${suffix}`],
         format: params[`format${suffix}`],
         imageFormat: params[`imageFormat${suffix}`],
+        imageId: params[`imageId${suffix}`],
+        maxWidth: params[`maxWidth${suffix}`],
         quality: params[`quality${suffix}`],
         urlIncludes: params[`urlIncludes${suffix}`],
         cdpRequestId: params[`requestId${suffix}`] || params[`cdpRequestId${suffix}`],
@@ -394,6 +750,7 @@ function buildCommandFromParams(params, suffix = '') {
         maxBodyChars: params[`maxBodyChars${suffix}`],
         snapshotId: params[`snapshotId${suffix}`],
         documentGeneration: params[`documentGeneration${suffix}`],
+        runtimeInstanceId: params[`runtimeInstanceId${suffix}`],
         strict: params[`strict${suffix}`],
         actionBackend: params[`actionBackend${suffix}`],
         verification: params[`verification${suffix}`],
@@ -419,7 +776,7 @@ function authorizeChromeCommand(entry, command) {
         return { allowed: true };
     }
 
-    if ((entry.clientKind === 'managed' && entry.managedTokenValid) || entry.clientKind === 'agent') {
+    if (isTrustedManagedClient(entry) || entry.clientKind === 'agent') {
         return { allowed: true };
     }
 
@@ -475,9 +832,9 @@ async function waitForManagedClient(timeoutMs = 10000) {
     const started = Date.now();
 
     while (Date.now() - started < timeoutMs) {
-        const managed = getOpenClients().find(entry =>
-            (entry.clientKind === 'managed' && entry.managedTokenValid) || entry.clientKind === 'agent'
-        );
+        // managed 是本机运行时身份，不是高权限能力的泛称。
+        // 远端 agent 即使先连接，也绝不能满足本机 managed 启动就绪条件。
+        const managed = getOpenClients().find(isTrustedManagedClient);
         if (managed) return managed;
         await new Promise(resolve => setTimeout(resolve, 250));
     }
@@ -510,7 +867,9 @@ async function selectChromeClient(cmdParams = {}, options = {}) {
     let clients = getOpenClients();
 
     const findByKind = (kind) => clients.find(entry => {
-        if (kind === 'managed') return (entry.clientKind === 'managed' && entry.managedTokenValid) || entry.clientKind === 'agent';
+        // managed 接受 token 自动认证或 Popup 人工明确选择；agent 保持独立目标，
+        // 避免分布式 agent 与服务器本机 managed Chrome 竞态。
+        if (kind === 'managed') return isTrustedManagedClient(entry);
         return entry.clientKind === kind;
     });
 
@@ -549,8 +908,9 @@ async function selectChromeClient(cmdParams = {}, options = {}) {
 
 function controlsManagedRuntime(entry) {
     if (!entry || !browserRuntimeManager.getManagedBrowserStatus().running) return false;
-    return (entry.clientKind === 'managed' && entry.managedTokenValid === true) ||
-        entry.clientKind === 'agent';
+    // 自动 token 或用户在服务器浏览器中明确选择的 Managed 均可控制本机运行时；
+    // 独立的 agent 身份永远不会隐式控制本机进程。
+    return isTrustedManagedClient(entry);
 }
 
 function touchManagedRuntimeForCommand(entry) {
@@ -607,13 +967,13 @@ async function executeSingleCommand(chromeEntryOrWs, cmdParams, waitForPageInfo 
         // 键盘提交依赖浏览器可信输入事件。managed/agent 的 send_keys 默认走 CDP，
         // 否则 content-script 构造的 KeyboardEvent.isTrusted=false，真实站点可能直接忽略。
         const shouldUseTrustedKeyboard = command === 'send_keys' &&
-            ((entry.clientKind === 'managed' && entry.managedTokenValid) || entry.clientKind === 'agent');
+            (isTrustedManagedClient(entry) || entry.clientKind === 'agent');
         effectiveCmdParams.actionBackend = shouldUseTrustedKeyboard
             ? 'cdp-input'
             : (featureFlags.cdpInput ? featureFlags.actionBackend : 'content-script');
     } else if (!featureFlags.cdpInput && effectiveCmdParams.actionBackend === 'auto') {
         effectiveCmdParams.actionBackend = command === 'send_keys' &&
-            ((entry.clientKind === 'managed' && entry.managedTokenValid) || entry.clientKind === 'agent')
+            (isTrustedManagedClient(entry) || entry.clientKind === 'agent')
             ? 'cdp-input'
             : 'content-script';
     }
@@ -629,8 +989,7 @@ async function executeSingleCommand(chromeEntryOrWs, cmdParams, waitForPageInfo 
     }
 
     if (!options.skipTouch) {
-        // 以“该命令是否实际控制当前 managed runtime”为准，而不是只看 hello
-        // 最终被归类出的 clientKind。agent 高权限桥可能承接 managed 目标，仍须续期。
+        // 仅通过本机 managed token 校验的连接可以续期本机运行时。
         touchManagedRuntimeForCommand(entry);
     }
 
@@ -796,13 +1155,56 @@ async function runLifecycleCommand(command, params = {}) {
     switch (command) {
         case 'open_chrome': {
             const timeoutMs = Number.parseInt(params.timeoutMs, 10) || 10000;
-            await browserRuntimeManager.ensureManagedBrowser();
-            let client = await waitForManagedClient(timeoutMs);
+            const interactiveSetup = parseBoolean(params.interactiveSetup, false);
+            const launchOptions = interactiveSetup
+                ? {
+                    enabled: true,
+                    headless: false,
+                    startMinimized: false,
+                    windowsHide: false,
+                    idleTimeoutMs: 24 * 60 * 60 * 1000
+                }
+                : {};
 
+            await browserRuntimeManager.ensureManagedBrowser(launchOptions);
+            const launchedRuntime = browserRuntimeManager.getManagedBrowserStatus();
+
+            // 人工设置只要求服务器主进程成功拥有并启动浏览器。此时用户可能正要
+            // 配置扩展或首次选择 Managed，不能等待握手，更不能因尚未握手而重启。
+            if (interactiveSetup) {
+                return {
+                    success: true,
+                    message: 'managed Chrome 已由服务器以人工设置模式启动',
+                    result: {
+                        interactiveSetup: true,
+                        runtime: browserRuntimeManager.getManagedBrowserStatus(),
+                        connectedManagedClient: getOpenClients()
+                            .filter(isTrustedManagedClient)
+                            .map(summarizeClient)[0] || null
+                    }
+                };
+            }
+
+            let client = await waitForManagedClient(timeoutMs);
             if (!client) {
-                console.warn('[ChromeBridge] open_chrome 未等到 managed token 连接，准备重启 managed Chrome 后重试一次。');
+                const runtimeAfterWait = browserRuntimeManager.getManagedBrowserStatus();
+
+                // 用户可能在扩展刷新或握手等待期间主动点 X 关闭窗口。此时进程已经
+                // 自然退出，必须尊重关闭意图；无条件重启会形成“关掉又打开”的循环。
+                if (
+                    !runtimeAfterWait.running &&
+                    runtimeAfterWait.runtimeInstanceId === launchedRuntime.runtimeInstanceId
+                ) {
+                    throw new Error(JSON.stringify({
+                        plugin_error: 'managed Chrome 在等待扩展连接期间已被关闭，已停止 open_chrome 自动重试。',
+                        error_type: 'managed_browser_closed_during_open',
+                        runtime: runtimeAfterWait
+                    }));
+                }
+
+                console.warn('[ChromeBridge] open_chrome 未等到可信 managed 连接，且浏览器仍在运行；准备重启 managed Chrome 后重试一次。');
                 await browserRuntimeManager.closeManagedBrowser('open_chrome_unverified_restart');
-                await browserRuntimeManager.ensureManagedBrowser();
+                await browserRuntimeManager.ensureManagedBrowser(launchOptions);
                 client = await waitForManagedClient(timeoutMs);
             }
 
@@ -819,8 +1221,11 @@ async function runLifecycleCommand(command, params = {}) {
             }
             return {
                 success: true,
-                message: 'managed Chrome 已启动并通过 token 校验连接',
+                message: interactiveSetup
+                    ? 'managed Chrome 已由服务器以人工设置模式启动并连接'
+                    : 'managed Chrome 已启动并建立可信连接',
                 result: {
+                    interactiveSetup,
                     runtime: browserRuntimeManager.getManagedBrowserStatus(),
                     connectedManagedClient: summarizeClient(client)
                 }
@@ -890,6 +1295,7 @@ function summarizeClient(entry) {
         lastSeenAt: entry.lastSeenAt,
         permissionLevel: entry.permissionLevel,
         managedTokenValid: entry.managedTokenValid,
+        manualManagedSelection: entry.manualManagedSelection,
         extensionVersion: entry.extensionVersion,
         managedTokenCreatedAt: entry.managedTokenCreatedAt
             ? new Date(entry.managedTokenCreatedAt).toISOString()
@@ -1070,7 +1476,7 @@ function formatObjectAsMarkdown(value, options = {}) {
     return lines.join('\n');
 }
 
-function getScreenshotDataUrl(commandResult = {}) {
+function getImageDataUrl(commandResult = {}) {
     const result = commandResult?.result || commandResult;
     const dataUrl = result?.dataUrl || result?.imageUrl || result?.url;
     if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
@@ -1115,8 +1521,8 @@ function formatCommandResultAsMarkdown(commandResult = {}) {
         lines.push('');
         lines.push(commandResult.result);
     } else if (commandResult.result !== undefined) {
-        const screenshotDataUrl = getScreenshotDataUrl(commandResult);
-        const details = screenshotDataUrl
+        const imageDataUrl = getImageDataUrl(commandResult);
+        const details = imageDataUrl
             ? { ...commandResult.result, dataUrl: '[omitted:data-image-url]' }
             : commandResult.result;
         lines.push('');
@@ -1170,17 +1576,17 @@ function normalizeToolResultForAi(commandResult) {
         };
     }
 
-    const screenshotDataUrl = getScreenshotDataUrl(commandResult);
-    const extraContent = screenshotDataUrl
+    const imageDataUrl = getImageDataUrl(commandResult);
+    const extraContent = imageDataUrl
         ? [{
             type: 'image_url',
             image_url: {
-                url: screenshotDataUrl
+                url: imageDataUrl
             }
         }]
         : [];
 
-    const details = screenshotDataUrl && commandResult?.result
+    const details = imageDataUrl && commandResult?.result
         ? {
             ...commandResult,
             result: {
