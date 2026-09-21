@@ -36,6 +36,65 @@ AI 的目标不是随意 `pull` 或盲目 `merge`，而是：
 
 ---
 
+## 2.1 网络代理约定
+
+本机可用代理为：
+
+```bash
+http://127.0.0.1:7896
+```
+
+Git 访问 GitHub 时不得依赖全局配置，因为当前全局代理配置可能指向失效端口。应逐命令覆盖：
+
+```bash
+git -c http.proxy=http://127.0.0.1:7896 -c https.proxy=http://127.0.0.1:7896 fetch upstream --prune
+```
+
+npm 需要联网时使用环境变量：
+
+```bash
+export HTTP_PROXY=http://127.0.0.1:7896
+export HTTPS_PROXY=http://127.0.0.1:7896
+export http_proxy=http://127.0.0.1:7896
+export https_proxy=http://127.0.0.1:7896
+```
+
+禁止把代理端口写成 `7897`。
+
+---
+
+## 2.2 Windows / Git Bash 检查规则
+
+AI 在 Git Bash 或 MSYS2 环境下检查 `rev:path` 形式的对象时，必须先禁用路径转换：
+
+```bash
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL='*'
+```
+
+示例：
+
+```bash
+blob=$(git rev-parse 'upstream/main:package.json')
+git cat-file -p "$blob"
+```
+
+判断文件真实差异时，必须排除 CRLF 噪音：
+
+```bash
+git diff --ignore-cr-at-eol upstream/main -- <file>
+```
+
+对比临时文件内容时使用：
+
+```bash
+diff -u --strip-trailing-cr <old-file> <new-file>
+```
+
+不得把整文件 CRLF 差异误判为内容冲突。
+
+---
+
 ## 3. 固定仓库信息
 
 - 工作分支：`custom`
@@ -230,6 +289,7 @@ AI 必须再次检查：
 - `Plugin/SciCalculator/requirements.txt`
 - `Plugin/VideoGenerator/requirements.txt`
 - `package.json`
+- `package-lock.json`
 
 处理原则：
 
@@ -237,6 +297,38 @@ AI 必须再次检查：
 2. 如果没有变化，则跳过；
 3. 允许记录安装告警，但不能把普通告警伪装成“更新失败”；
 4. 如果安装命令确实失败，要把失败命令和错误原文告诉主人。
+
+### 6.1 lockfile 特殊规则
+
+`package-lock.json` 禁止手工逐行合并冲突。正确处理方式：
+
+1. 冲突阶段可先按上游版本清空冲突；
+2. 合并提交前或合并完成后，根据最终 `package.json` 执行 `npm install` 或 `npm ci`；
+3. 让 npm 重新生成或校验 `package-lock.json`；
+4. 确认 `npm ls` 无错误后，再提交 lockfile。
+
+lockfile 的目标是忠实记录最终依赖树，而不是保留双方文本。
+
+### 6.2 最低验证清单
+
+依赖安装后，至少执行：
+
+```bash
+git diff --name-status --diff-filter=U
+npm ls --depth=0
+node --check server.js
+```
+
+再根据本次改动范围补充针对性测试。
+
+如果测试失败，先判断是否为环境问题。中文用户名路径可能导致临时文件写入失败；此时应改用英文临时目录重跑：
+
+```bash
+tmp=$(mktemp -d /f/VCP/.tmp-vcptoolbox-test-XXXXXX)
+export TMP="$tmp" TEMP="$tmp" TMPDIR="$tmp"
+```
+
+如果同一失败在纯上游版本也能复现，优先判断为环境或上游问题；如果修正环境后本仓库仍失败、而纯上游版本通过，才判断为本次合并引入的问题。
 
 ### 阶段 7：推送到个人备份仓库
 
