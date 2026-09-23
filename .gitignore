@@ -1,4 +1,5 @@
 # Logs
+.vcp-runtime/
 logs
 *.log
 npm-debug.log*

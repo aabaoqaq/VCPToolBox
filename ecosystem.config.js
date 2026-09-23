@@ -13,24 +13,33 @@ module.exports = {
     {
       name: 'vcp-main',
       script: 'server.js',
+      cwd: __dirname,
+      interpreter: process.env.VCP_NODE_EXE || process.execPath,
       watch: false,
       // 不设置 max_memory_restart：允许主服务按系统可用内存自然增长。
       kill_timeout: 15000,
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        UV_THREADPOOL_SIZE: '64',
+        // 保留诊断期间禁用 @pm2/io 的设置；不能据此认定中文路径或 Node 版本是根因。
+        pmx: 'false'
       }
     },
     {
       name: 'vcp-admin',
       script: 'adminServer.js',
+      cwd: __dirname,
+      interpreter: process.env.VCP_NODE_EXE || process.execPath,
       watch: false,
       // 不设置 max_memory_restart：避免管理面板被 PM2 因短时 RSS 波动重启。
       kill_timeout: 5000,
-      // 等待主服务初始化后再启动管理面板
+      // wait_ready=false 不代表等待主服务；启动助手负责验证两个服务是否就绪。
       wait_ready: false,
       restart_delay: 5000,
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        UV_THREADPOOL_SIZE: '64',
+        pmx: 'false'
       }
     }
   ]
