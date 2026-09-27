@@ -66,9 +66,7 @@
 
 | 文件路径 | 职责 |
 |---------|------|
-| `start_server.bat` | 启动服务器 |
-| `update.bat` | 完整更新（含依赖） |
-| `update_with_no_dependency.bat` | 无依赖更新 |
+| `start_server.bat` | 启动服务器；更新统一由外部 VCPUpdater 管理 |
 
 ---
 

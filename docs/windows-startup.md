@@ -78,7 +78,7 @@ pwsh -NoProfile -File .\scripts\start-vcp.ps1
 
 ## 频繁更新：统一使用 VCPUpdater
 
-旧的 `自动更新.bat` 与 `update_with_no_dependency.bat` 已停用，不再作为更新入口。VCPToolBox 的更新请从 `F:\VCP\VCPUpdater\start-vcp-updater.cmd` 或 VCPUpdater 的 `npm run start:desktop` 开始；不要通过旧 BAT 绕过工作区、冲突或基线检查。
+VCPToolBox 仓库内的旧更新入口（旧 BAT、无依赖脚本和全量更新脚本）已移除，不再作为更新入口。VCPToolBox 的更新请从 `F:\VCP\VCPUpdater\start-vcp-updater.cmd` 或 VCPUpdater 的 `npm run start:desktop` 开始；不要恢复旧脚本绕过工作区、冲突或基线检查。
 
 VCPUpdater 当前本机 MVP 只负责：读取状态、查看上游、在仓库外准备候选、展示变化/冲突，以及在工作区干净且基线未漂移时应用简单候选。它不会自动安装依赖、构建原生模块、停启 VCPToolBox 服务、执行复杂恢复或向远程 push。
 
@@ -94,12 +94,12 @@ VCPUpdater 当前本机 MVP 只负责：读取状态、查看上游、在仓库�
 
 ## 测试与回退
 
-VCPToolBox 的启动检查仍使用本文件前面列出的官方 `start-vcp.ps1` 只读检查；VCPUpdater 的隔离测试和工程检查在 `F:\VCP\VCPUpdater` 内执行。任何测试都不得把旧 BAT 当作更新流程重新运行。
+VCPToolBox 的启动检查仍使用本文件前面列出的官方 `start-vcp.ps1` 只读检查；VCPUpdater 的隔离测试和工程检查在 `F:\VCP\VCPUpdater` 内执行。任何测试都不得把已移除的旧更新入口恢复后重新运行。
 
 本批次旧入口的有效恢复来源是：
 
 ```text
-F:\VCP\.vcpupdater-state\migrations\20260927-1325-toolbox-b1\manifest.json
+F:\VCP\.vcpupdater-state\migrations\20260927-1418-toolbox-cleanup\manifest.json
 ```
 
 恢复前必须核对 manifest、原文件副本 SHA256、当前目标文件是否仍是本批次改写结果，以及当前工作区是否有新的用户修改。只恢复明确的授权路径，不执行整仓 `git reset --hard`、`git clean` 或覆盖数据库、向量索引、插件配置。历史路径 `F:\VCP\startup-backup-20260923-1516` 当前不存在，不能作为恢复来源，也不能据此创建目录或停启服务。
