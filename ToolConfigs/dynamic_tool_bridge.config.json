@@ -11,7 +11,16 @@
   "useRagEmbeddings": true,
   "manualOverrides": {
     "excludedOriginKeys": [],
-    "pinnedOriginKeys": [],
+    "pinnedOriginKeys": [
+      "local:ChromeBridge",
+      "local:DailyNoteSearcher",
+      "local:LightMemo",
+      "local:PluginManager",
+      "local:ServerCodeSearcher",
+      "local:UrlFetch",
+      "local:VCPToolBridge",
+      "local:VSearch"
+    ],
     "categoryAliases": {},
     "descriptionOverrides": {}
   },
