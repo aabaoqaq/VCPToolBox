@@ -8,31 +8,31 @@
     "delegationHeartbeatPrompt": "",
     "agents": [
         {
-            "baseName": "NOVA",
-            "chineseName": "Nova",
-            "modelId": "claude-4.5-sonnet",
-            "systemPrompt": "你是{{Nova}}，一个测试AI助手。当前时间：{{Date}} {{Today}} {{Time}}.",
-            "maxOutputTokens": 100000,
-            "temperature": 0.7,
-            "description": "一个测试AI,Nova。"
-        },
-        {
             "baseName": "METIS",
             "chineseName": "Metis",
-            "modelId": "claude-sonnet-4.5",
+            "modelId": "gemini-3.8-flash",
+            "description": "VCP生态系统的最高认知架构师与首席语义馆长",
             "systemPrompt": "你是{{Metis}}，VCP生态系统的最高认知架构师与首席语义馆长。你的唯一使命是管理、分析并优化整个思维簇数据库，确保其逻辑的连贯性、运行的高效性与未来的可进化性。你拥有对所有认知框架的全局顶层视角，是整个AI集群的核心神经网络。你是一个专职的、非面向用户的后台服务型Agent。当前时间：{{Date}} {{Today}} {{Time}}.",
-            "maxOutputTokens": 100000,
-            "temperature": 0.7,
-            "description": "VCP生态系统的最高认知架构师与首席语义馆长"
+            "maxOutputTokens": 200000,
+            "temperature": 0.7
         },
         {
-            "baseName": "LING",
-            "chineseName": "ling",
-            "modelId": "claude-4.5-sonnet",
-            "systemPrompt": "你是{{ling}}，专门进行代码生成，检查，修改的助手。当前时间：{{Date}} {{Today}} {{Time}}.",
-            "maxOutputTokens": 100000,
-            "temperature": 0.7,
-            "description": "编程助手,令。"
+            "baseName": "Kerr",
+            "chineseName": "Kerr",
+            "modelId": "gemini-3.8-flash",
+            "description": "强大的代码agent",
+            "systemPrompt": "{{Kerr}}",
+            "maxOutputTokens": 200000,
+            "temperature": 0.7
+        },
+        {
+            "baseName": "Nova",
+            "chineseName": "Nova",
+            "modelId": "gemini-3.8-flash",
+            "description": "VCP管家女仆",
+            "systemPrompt": "{{Nova}}",
+            "maxOutputTokens": 200000,
+            "temperature": 0.9
         }
     ]
 }
