@@ -18,7 +18,7 @@ class LkongMiner {
         for (const p of posts) {
             if (p.lou === 1 || p.lou === '1') continue;
 
-            const text = p.text || '';
+            const text = p.content || p.text || '';
             const cleanText = text.replace(/引用.*?说：/g, '').trim();
             const cleanLen = cleanText.length;
 
@@ -32,7 +32,7 @@ class LkongMiner {
                     nuggets.push({
                         lou: p.lou,
                         pid: p.pid,
-                        author: p.author || '深水老作者',
+                        author: p.author_name || p.author || '深水老作者',
                         length: cleanText.length,
                         excerpt: cleanText.slice(0, 160) + (cleanText.length > 160 ? '...' : ''),
                         text: cleanText,
@@ -47,9 +47,32 @@ class LkongMiner {
     /**
      * 2. 补课周期·民间好帖多维评分模型 (不限24小时，全量平铺)
      * @param {Array<Object>} threads - 抓取到的帖子
+     * @param {Object} store - 本地存储实例 (用于按需关联 posts 楼层详情)
      * @returns {Array<Object>} 优质民间好帖卡片列表
      */
-    static extractCommunityGold(threads) {
+    /**
+     * 精确计算将要登上日报的所有干货帖与吃瓜主帖 tid，供爬虫 100% 覆盖下潜
+     */
+    static getTargetTidsForReport(threads) {
+        if (!Array.isArray(threads)) return [];
+        const preliminaryGolds = LkongMiner.extractCommunityGold(threads, null);
+        const preliminaryDramas = LkongMiner.clusterDramas(threads, new Set(), null);
+
+        const tids = new Set();
+        // 1. 干货榜 Top 6 篇全部下潜
+        for (const g of preliminaryGolds.slice(0, 6)) {
+            if (g.tid) tids.add(g.tid);
+        }
+        // 2. 每个吃瓜聚类的前 2 篇核心主帖全部下潜
+        for (const d of preliminaryDramas) {
+            for (const dt of (d.threads || []).slice(0, 2)) {
+                if (dt.tid) tids.add(dt.tid);
+            }
+        }
+        return Array.from(tids);
+    }
+
+    static extractCommunityGold(threads, store = null) {
         if (!Array.isArray(threads)) return [];
         const goldList = [];
 
@@ -58,16 +81,16 @@ class LkongMiner {
             const content = t.first_content || '';
             const combined = title + ' ' + content;
 
-            // 过滤纯水、散财与情绪对线
-            if (/散财|散币|龙币|金币|打卡|签到|求书|书荒|有无好书|腰椎间盘|恶心|小丑/.test(title)) continue;
+            // 过滤纯水、散财、求书与纯撕逼吃瓜帖（撕逼帖归入吃瓜专区）
+            if (/散财|散币|龙币|金币|打卡|签到|求书|书荒|有无好书|腰椎间盘|恶心|小丑|抄袭狗|滚回来|调色盘|战斗《|八爪鱼/.test(title)) continue;
 
             let score = 0;
             const tags = [];
 
-            // A. 数据密度打分（首订、追读、留存率、均订、完读率、稿费、精品、畅销榜）
-            if (/首订|追读|留存|均订|千字|首订比|转化率|收订比|上架成绩|完读率|稿费|精品|畅销\d+|单章/.test(combined)) {
+            // A. 数据密度打分（首订、追读、留存率、均订、完读率、稿费、单章字数、万订）
+            if (/首订|追读|留存|均订|千字|首订比|转化率|收订比|上架成绩|完读率|稿费|精品|畅销\d+|单章|2000字|4000字|万订|万定/.test(combined)) {
                 score += 35;
-                tags.push('📊 含核心数据');
+                tags.push('📊 核心数据复盘');
             }
 
             // B. 图表识别（通过 slate/images 探测到作者后台截图）
@@ -77,113 +100,285 @@ class LkongMiner {
                 if (Array.isArray(imgs) && imgs.length > 0) hasImages = true;
             } catch(e) {}
             if (hasImages) {
-                score += 25;
-                if (!tags.includes('📊 含核心数据')) tags.push('📈 含后台截图');
+                score += 20;
+                if (!tags.includes('📊 核心数据复盘')) tags.push('📈 含后台截图');
             }
 
             // C. 题材与实操方法论（内投、试水推、新书期、过签、反派塑造、写书心得）
-            if (/总结|攻略|复盘|实操|避坑|指南|反派塑造|设定|大纲|试水推|内投|新书期|过签|签约|开篇|主线|金手指|死磕/.test(combined)) {
+            if (/总结|攻略|复盘|实操|避坑|指南|反派塑造|设定|大纲|试水推|内投|新书期|过签|签约|开篇|主线|金手指|死磕|经验|枪手|续写/.test(combined)) {
                 score += 25;
                 tags.push('💡 题材实战');
             }
 
-            // D. 篇幅与排版结构
-            if (content.length >= 300) score += 15;
+            // D. 篇幅与时效性加分 (近7日新帖优先呈现)
+            if (content.length >= 200) score += 15;
+            const now = Date.now();
+            const ageDays = t.dateline ? (now - t.dateline) / (86400 * 1000) : 0;
+            if (ageDays <= 7) score += 20;
 
-            // 阈值：>= 35 分即判定为民间高价值干货，不设数量截断全量平铺
+            // 阈值：>= 35 分即判定为民间高价值干货，精选 Top 6 篇深度呈现
             if (score >= 35) {
-                let summary = content.length > 30 ? content.slice(0, 360).replace(/\s+/g, ' ').trim() + '...' : `作者围绕《${title}》展开了系统复盘，梳理了新书期连载节奏、平台推荐机制与实际写作心态中的关键痛点与应对策略。`;
-                let value = '为正处于新书期或连载期的作者提供清晰的指标参照，降低摸索与试错成本。';
-
-                if (tags.includes('📊 含核心数据') || tags.includes('📈 含后台截图')) {
-                    value = '带真实后台数据与收益参照，可作为流派市场空间与签约留存率的客观量化基准。';
-                } else if (title.includes('反派') || title.includes('设定') || title.includes('大纲')) {
-                    value = '具备直接落地的写作结构论，适合卡文或处于人设重构阶段的创作者精读。';
+                let posts = Array.isArray(t.posts) ? t.posts : [];
+                if (posts.length === 0 && store && typeof store.getPosts === 'function') {
+                    try { posts = store.getPosts(t.tid, 15); } catch (e) {}
                 }
+
+                const authorName = t.author_name || t.author?.name || '民间高人';
+                const usedLous = new Set();
+                const summary = LkongMiner._distillGoldSummary(title, content, posts, authorName, usedLous);
+                const value = LkongMiner._distillGoldValue(title, content, posts, tags, authorName, usedLous);
 
                 goldList.push({
                     tid: t.tid,
                     title: t.title,
-                    author: t.author_name || t.author?.name || '民间高人',
+                    author: authorName,
                     replies: t.replies || 0,
                     views: t.views || 0,
                     tags,
                     summary,
                     value,
-                    score
+                    score,
+                    is_deleted: !!t.is_deleted
                 });
             }
         }
 
-        // 按评分和回复量综合降序
-        return goldList.sort((a, b) => b.score - a.score || b.replies - a.replies);
+        // 按评分和回复量综合降序，保留最硬核的 Top 6 篇确保篇篇精读
+        return goldList.sort((a, b) => b.score - a.score || b.replies - a.replies).slice(0, 6);
     }
 
     /**
-     * 3. 吃瓜脉络归并与低熵清洗 (Drama Cluster)
+     * 从真实正文与作者后续楼层提纯真实内容简介 (拒绝套话，句句带货)
      */
-    static clusterDramas(threads, noiseWords = new Set()) {
+    static _distillGoldSummary(title, firstContent, posts = [], opName = '', usedLous = new Set()) {
+        const raw = (firstContent || '').trim();
+        if (raw.length === 0) {
+            return `主题《${title}》正在同步正文快照...`;
+        }
+
+        // 清洗常见无关前缀、龙空引用与冗长图片URL
+        const cleaned = raw
+            .replace(/\[图片:https?:\/\/[^\]]+\]/g, '[附实测截图]')
+            .replace(/引用.*?说：/g, '')
+            .replace(/^(如题|新人发帖|各位大佬好|本人纯萌新|防沉底|闲着没事发个贴)[，。\s]*/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        let fullSummary = cleaned.slice(0, 280);
+        if (cleaned.length > 280) fullSummary += '...';
+
+        // 当首楼较简短时，收集楼主在后续楼层的重要追更或前排解答
+        if (fullSummary.length < 220) {
+            const extraUpdates = [];
+            for (const p of posts) {
+                if (p.lou > 1) {
+                    const text = (p.content || '')
+                        .replace(/\[图片:https?:\/\/[^\]]+\]/g, '[附图]')
+                        .replace(/引用.*?说：/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                    const isOp = opName && p.author_name === opName;
+                    if (isOp && text.length >= 10) {
+                        extraUpdates.push(`【楼主${p.lou}楼追更】${text.slice(0, 90)}`);
+                        usedLous.add(p.lou);
+                    } else if (/day\d+|实测|首订|追读|留存|细纲|千字/i.test(text) && text.length >= 25) {
+                        extraUpdates.push(`【${p.lou}楼 @${p.author_name}】${text.slice(0, 90)}`);
+                        usedLous.add(p.lou);
+                    }
+                    if (extraUpdates.length >= 2) break;
+                }
+            }
+            if (extraUpdates.length > 0) {
+                fullSummary += ' ' + extraUpdates.join(' ');
+            }
+        }
+
+        return fullSummary;
+    }
+
+    /**
+     * 从真实正文与回帖提炼实操价值简析 (切中要害的实操价值与避坑指引)
+     */
+    static _distillGoldValue(title, firstContent, posts = [], tags = [], opName = '', usedLous = new Set()) {
+        const combined = (title + ' ' + (firstContent || '')).toLowerCase();
+        const valuePoints = [];
+
+        if (/稿费|千字|单章|2000字|4000字|阅读量|广告|分成|完读率|收益/.test(combined)) {
+            valuePoints.push('一手收益与分章实测：通过真实后台字数与稿费数据对比，拆解免费/付费平台广告计费权重与读者完读留存的平衡点。');
+        } else if (/起点|首订|追读|留存|试水推|内投|签约|过签|万订|万定/.test(combined)) {
+            valuePoints.push('主站推荐与签约复盘：还原新书期真实追读转化门槛与长线连载节奏，为内投立项、试水推晋级及续写决策提供量化参照。');
+        } else if (/番茄|红果|免费|七猫|出走/.test(combined)) {
+            valuePoints.push('免费站生态生存指南：剖析下沉市场推书算法与受众偏好，降低跨站开书的试错成本。');
+        } else if (/大纲|设定|节奏|反派|金手指|钩子|伏笔|人设|写书心得|框架|套路|商业化/.test(combined)) {
+            valuePoints.push('商业网文结构方法论：系统梳理题材爆点、角色成长弧线与主线冲突设计，可直接作为开书人设表与细纲模板使用。');
+        } else {
+            valuePoints.push('一线创作经验复盘：结合真实连载痛点，提供可落地的节奏把控与心态调适参考。');
+        }
+
+        // 挖掘楼中同行老作者的关键补充或争议碰撞（严格避开已在简介中引用的楼层与楼主自回）
+        const peerInsights = [];
+        for (const p of posts) {
+            if (p.lou > 1 && !usedLous.has(p.lou) && p.author_name !== opName) {
+                const text = (p.content || '')
+                    .replace(/\[图片:https?:\/\/[^\]]+\]/g, '')
+                    .replace(/引用.*?说：/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                if (text.length >= 20 && /注意|其实|坑|建议|规则|算法|以前|现在|不会|没用|细纲|打磨|稿费|写好|套路|读者/.test(text)) {
+                    peerInsights.push(`@${p.author_name}：“${text.slice(0, 68)}${text.length > 68 ? '...' : ''}”`);
+                    if (peerInsights.length >= 1) break;
+                }
+            }
+        }
+
+        if (peerInsights.length > 0) {
+            valuePoints.push(`💬 楼中同行锐评：${peerInsights[0]}`);
+        }
+
+        return valuePoints.join(' ');
+    }
+
+    /**
+     * 3. 报业级吃瓜脉络归并与深度特稿生成 (Drama Cluster & Investigative Report)
+     * 告别死板模板，真正读过首楼事实与楼中前排交锋，提供详尽报道与证据链
+     */
+    static clusterDramas(threads, noiseWords = new Set(), store = null) {
         if (!Array.isArray(threads)) return [];
         const clusters = new Map();
 
-        // 识别特定热点吃瓜实体模式
-        const DRAMA_PATTERNS = [
-            { key: '番茄实体书与AI提示词洗稿风波', regex: /实体书|AI直出|AI提示词|番茄出版/ },
-            { key: '作品抄袭调色盘与融梗对峙', regex: /抄袭|融梗|调色盘/ },
-            { key: '平台合同条款与版权归属争议', regex: /合同|全版权|分成|扣税|纵横七猫/ },
-            { key: '知名作者异动与互撕大结局', regex: /小乌贼|鹤守|邹大海|断更|太监/ }
+        // 识别吃瓜四大主战场
+        const DRAMA_DEFINITIONS = [
+            {
+                key: '作品抄袭调色盘与融梗对峙',
+                regex: /抄袭|融梗|调色盘|七月封阳|洗稿|同学，你也要攻略|战斗《/,
+                categoryName: '版权维权与抄袭争议'
+            },
+            {
+                key: '短剧漫改爆发与红果番茄垄断争议',
+                regex: /漫剧|漫改|短剧|红果|番茄.*大抄袭|不烧心/,
+                categoryName: '新兴衍生剧与平台垄断'
+            },
+            {
+                key: '平台合同条款与版权归属争议',
+                regex: /合同|全版权|分成|扣税|拿回版权|纵横七猫|保底|断更.*版权/,
+                categoryName: '平台政策与作者权益'
+            },
+            {
+                key: '圈内作者异动与江湖论战',
+                regex: /小乌贼|鹤守|邹大海|大神.*回归|姬叉|老写手.*AI|摧毁脑洞|基本盘/,
+                categoryName: '名家动态与圈内论战'
+            }
         ];
 
         for (const t of threads) {
             const title = t.title || '';
-            for (const p of DRAMA_PATTERNS) {
-                if (p.regex.test(title)) {
-                    if (!clusters.has(p.key)) {
-                        clusters.set(p.key, {
-                            eventName: p.key,
-                            threadCount: 0,
-                            totalReplies: 0,
+            if (/散财|散币|龙币/.test(title)) continue;
+            for (const d of DRAMA_DEFINITIONS) {
+                if (d.regex.test(title)) {
+                    if (!clusters.has(d.key)) {
+                        clusters.set(d.key, {
+                            eventName: d.key,
+                            categoryName: d.categoryName,
                             threads: [],
-                            coreDispute: '',
-                            stances: ''
+                            totalReplies: 0
                         });
                     }
-                    const item = clusters.get(p.key);
-                    item.threadCount++;
+                    const item = clusters.get(d.key);
                     item.totalReplies += (t.replies || 0);
-                    item.threads.push({
-                        tid: t.tid,
-                        title: t.title,
-                        author: t.author_name || t.author?.name || '',
-                        replies: t.replies || 0,
-                        hasImages: typeof t.images === 'string' && t.images.length > 5
-                    });
+                    item.threads.push(t);
                     break;
                 }
             }
         }
 
-        const result = [];
+        const reports = [];
+
         for (const [key, item] of clusters.entries()) {
-            if (item.threads.length >= 1) { // 聚合为大瓜
-                if (key.includes('实体书')) {
-                    item.coreDispute = '读者收到出版实体书内含 ChatGPT 原生提示词未删，作者反指平台签约自动授权且擅自修改。';
-                    item.stances = '读者谴责草台班子 vs 作者澄清平台侵权 vs 圈内呼吁警惕全版权陷阱';
-                } else if (key.includes('抄袭')) {
-                    item.coreDispute = '某热门作品被读者曝出主线调色盘与既有经典高度重叠，引爆原作者与读者的多方对线。';
-                    item.stances = '原作者读者声讨维权 vs 被指控方辩解微创新巧合 vs 吃瓜老哥观望证据链';
-                } else if (key.includes('合同')) {
-                    item.coreDispute = '平台针对新人签约与保底门槛微调，引发中腰部作者对未来收入预期的激烈争论。';
-                    item.stances = '出走外站作者经验谈 vs 留守作者观望 vs 新人签约求生';
-                } else {
-                    item.coreDispute = '圈内热议作者公开发声，因连载心态、写作立场或同行评价引发热烈复盘。';
-                    item.stances = '支持真性情解构 vs 批评格局受限 vs 纯看客梳理恩怨线';
-                }
-                result.push(item);
+            if (item.threads.length === 0) continue;
+
+            // 选出该事件中最具核心爆发力的主帖（优先已有正文或回复最多）
+            const sortedThreads = [...item.threads].sort((a, b) => (b.replies || 0) - (a.replies || 0));
+            const mainThread = sortedThreads[0];
+
+            // 获取主帖的楼层数据
+            let posts = Array.isArray(mainThread.posts) ? mainThread.posts : [];
+            if (posts.length === 0 && store && typeof store.getPosts === 'function') {
+                try { posts = store.getPosts(mainThread.tid, 20); } catch(e) {}
             }
+
+            // 报业级深度报道提纯
+            const investigation = LkongMiner._distillDramaInvestigation(mainThread, sortedThreads, posts);
+
+            reports.push({
+                eventName: item.eventName,
+                categoryName: item.categoryName,
+                threadCount: item.threads.length,
+                totalReplies: item.totalReplies,
+                brief: investigation.brief,
+                coreDispute: investigation.coreDispute,
+                stances: investigation.stances,
+                threads: sortedThreads.map(t => ({
+                    tid: t.tid,
+                    title: t.title,
+                    author: t.author_name || t.author?.name || '',
+                    replies: t.replies || 0,
+                    hasImages: (typeof t.images === 'string' && t.images.length > 5) || (Array.isArray(t.images) && t.images.length > 0)
+                }))
+            });
         }
 
-        return result;
+        return reports;
+    }
+
+    /**
+     * 深度报道提炼器：还原真实事件全貌、当事人控诉细节与回帖交锋
+     */
+    static _distillDramaInvestigation(mainThread, allThreads, posts = []) {
+        const title = mainThread.title || '';
+        const author = mainThread.author_name || mainThread.author?.name || '发帖人';
+        const firstContent = (mainThread.first_content || '').trim();
+
+        // 1. 新闻导语简报（不与正文重复，点明焦点规模与导火索）
+        const totalReplies = allThreads.reduce((acc, cur) => acc + (cur.replies || 0), 0);
+        const brief = `焦点主帖《${title}》（楼主：@${author}）引爆讨论，该话题下共聚合 ${allThreads.length} 篇关联帖、累计 ${totalReplies} 条交锋回复。`;
+
+        // 2. 深度脉络与首楼详情还原 (读过首楼正文，挖掘具体书名、当事人与证据)
+        let coreDispute = '';
+        if (firstContent.length > 0) {
+            const cleanContent = firstContent
+                .replace(/\[图片:https?:\/\/[^\]]+\]/g, '[附证据截图]')
+                .replace(/引用.*?说：/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            coreDispute = `楼主 @${author} 原文披露：${cleanContent.slice(0, 300)}${cleanContent.length > 300 ? '...' : ''}`;
+        } else {
+            coreDispute = `围绕《${title}》展开讨论，正文快照正在同步入库中。`;
+        }
+
+        // 3. 楼中交锋与真实回帖实录 (读取第2~20楼真实回帖，还原各方原话)
+        const realQuotes = [];
+        for (const p of posts) {
+            if (p.lou <= 1) continue;
+            const text = (p.content || '')
+                .replace(/\[图片:https?:\/\/[^\]]+\]/g, '[附图]')
+                .replace(/引用.*?说：/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            // 过滤纯水词（如“顶”、“插眼”）
+            if (text.length < 8 || /^(顶+|支持|前排|吃瓜|mark|插眼)$/i.test(text)) continue;
+
+            realQuotes.push(`[${p.lou}楼 @${p.author_name}]：“${text.slice(0, 65)}${text.length > 65 ? '...' : ''}”`);
+            if (realQuotes.length >= 3) break;
+        }
+
+        let stances = '';
+        if (realQuotes.length > 0) {
+            stances = realQuotes.join(' ｜ ');
+        } else {
+            stances = '楼内书友围绕事件真实性与后续影响持续跟进讨论中。';
+        }
+
+        return { brief, coreDispute, stances };
     }
 
     /**

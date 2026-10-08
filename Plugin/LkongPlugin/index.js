@@ -150,7 +150,7 @@ async function handleExpandDaily(args) {
         // 2. 从 digest_pool 获取严格 7 天内的新晋精选
         const activeDigests = s.getActiveDigests(7);
 
-        // 3. 从本地库拉取有效窗口期的所有活跃帖子 (至多 300 篇)
+        // 3. 从本地库拉取有效窗口期的所有活跃帖子 (至多 250 篇)
         const recentThreads = s.db.prepare(`
             SELECT * FROM threads
             WHERE fid = ?
@@ -158,16 +158,33 @@ async function handleExpandDaily(args) {
             LIMIT 250
         `).all(fid);
 
-        // 4. 挖掘补课窗口期高分民间好帖 (不限24h，不限量全量平铺)
-        const communityGolds = LkongMiner.extractCommunityGold(recentThreads);
+        // ==== Tiered Deep Crawl: 日报上榜帖正文与楼层100%精准下潜持久化 ====
+        const targetTids = LkongMiner.getTargetTidsForReport(recentThreads);
 
-        // 5. 提取吃瓜同类项归并 (多帖聚类 + 证据链)
+        try {
+            await crawler.deepCrawlThreads(targetTids, { delayMs: 400 });
+        } catch (e) {
+            console.error('[ExpandDaily] 深度抓取候选帖异常:', e.message);
+        }
+
+        // 重新获取已写入正文快照的最新列表
+        const refreshedThreads = s.db.prepare(`
+            SELECT * FROM threads
+            WHERE fid = ?
+            ORDER BY lastpost DESC
+            LIMIT 250
+        `).all(fid);
+
+        // 4. 挖掘补课窗口期高分民间好帖 (传入 store 关联真实正文与楼层，杜绝套话)
+        const communityGolds = LkongMiner.extractCommunityGold(refreshedThreads, s);
+
+        // 5. 提取报业级吃瓜深度特稿 (结合首楼指控事实与前排交锋论点)
         const noiseWords = s.getNoiseWords();
-        const dramas = LkongMiner.clusterDramas(recentThreads, noiseWords);
+        const dramas = LkongMiner.clusterDramas(refreshedThreads, noiseWords, s);
 
         // 6. 圈内情绪温度计与降噪审计
-        const sentiment = LkongMiner.calculateSentiment(recentThreads);
-        const foldedNoise = recentThreads.filter(t => t.category === 'noise');
+        const sentiment = LkongMiner.calculateSentiment(refreshedThreads);
+        const foldedNoise = refreshedThreads.filter(t => t.category === 'noise');
 
         // 7. 使用书卷水墨质感固定 UI 模板渲染
         const reportHtml = LkongReporter.formatHtmlReport({
@@ -193,7 +210,7 @@ async function handleExpandDaily(args) {
     }
 }
 
-// 5. 抓取单个帖子楼层详情与图片防盗链本地缓存
+// 5. 抓取单个帖子楼层详情与图片防盗链本地缓存（含原帖被删时的本地抢救快照回退）
 async function handleGetThread(args) {
     const tid = parseInt(args.tid, 10);
     if (!tid) return sendResponse('error', '缺少必要参数: tid');
@@ -201,15 +218,17 @@ async function handleGetThread(args) {
     const page = parseInt(args.page || 1, 10);
     const downloadImages = !!args.cache_images;
     const c = getClient();
+    const s = getStore();
     const m = getMedia();
 
     try {
         const posts = (await c.getThreadPage(tid, page))?.posts;
-        if (!Array.isArray(posts)) {
-            return sendResponse('error', `未找到该主题的楼层数据 (tid: ${tid})`);
+        if (!Array.isArray(posts) || posts.length === 0) {
+            throw new Error('REMOTE_POSTS_EMPTY_OR_DELETED');
         }
 
         const formattedPosts = [];
+        const postsToSave = [];
         const allImageUrls = [];
 
         for (const p of posts) {
@@ -227,7 +246,30 @@ async function handleGetThread(args) {
                 images: slateRes.images,
                 structure: slateRes.structureCount
             });
+            postsToSave.push({
+                pid: p.pid,
+                tid,
+                lou: p.lou,
+                uid: p.user?.uid || 0,
+                author_name: p.user?.name || '',
+                dateline: p.dateline || 0,
+                content: slateRes.text,
+                images: slateRes.images,
+                score: 0
+            });
         }
+
+        // 顺手持久化进 SQLite
+        try {
+            s.savePosts(postsToSave);
+            if (page === 1 && formattedPosts[0]) {
+                s.updateThreadSnapshot(tid, {
+                    first_content: formattedPosts[0].text,
+                    images: formattedPosts[0].images,
+                    is_deleted: 0
+                });
+            }
+        } catch (dbErr) {}
 
         // 如果要求缓存图片（防盗链）
         let cachedImages = [];
@@ -238,12 +280,37 @@ async function handleGetThread(args) {
         return sendResponse('success', {
             tid,
             page,
+            from_local_snapshot: false,
             post_count: formattedPosts.length,
             posts: formattedPosts,
             cached_images: cachedImages
         });
     } catch (err) {
-        return sendResponse('error', `获取帖子楼层详情失败: ${err.message}`);
+        // 原站删帖或网络异常时，自动回退读取本地 SQLite 7日窗口快照
+        try {
+            const localThread = s.getThread(tid);
+            const localPosts = s.getPosts(tid, 50);
+            if (localPosts && localPosts.length > 0) {
+                s.updateThreadSnapshot(tid, { is_deleted: 1 });
+                return sendResponse('success', {
+                    tid,
+                    title: localThread ? localThread.title : '',
+                    from_local_snapshot: true,
+                    notice: '⚠️ 原站该帖已被删除或无法访问，已自动调取本地 SQLite 抢救快照！',
+                    post_count: localPosts.length,
+                    posts: localPosts.map(lp => ({
+                        lou: lp.lou,
+                        pid: lp.pid,
+                        author: lp.author_name,
+                        dateline: lp.dateline,
+                        text: lp.content,
+                        images: (() => { try { return JSON.parse(lp.images || '[]'); } catch(e) { return []; } })()
+                    }))
+                });
+            }
+        } catch (fallbackErr) {}
+
+        return sendResponse('error', `获取帖子楼层详情失败且本地无快照 (tid: ${tid}): ${err.message}`);
     }
 }
 

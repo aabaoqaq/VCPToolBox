@@ -29,7 +29,7 @@ const S = {
     hotGrid: "display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;",
     hotItem: "text-decoration:none;background:#fdfcf9;border:1px solid #e2dac9;padding:8px 12px;border-radius:6px;font-size:12.5px;color:#2c2623 !important;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.02);line-height:1.4;",
     hotItemText: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;flex:1;color:#2c2623 !important;",
-    hotBadge: "background:#8b5325;color:#ffffff !important;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:10px;flex-shrink:0;",
+    hotBadge: "background:#7c2d12;color:#ffffff !important;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:10px;flex-shrink:0;",
 
     sectionTitle: "display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14.5px;font-weight:800;color:#1c1815;",
     sectionMeta: "font-size:11.5px;font-weight:600;color:#5c5449;",
@@ -37,18 +37,18 @@ const S = {
     cardBase: "background:#ffffff;border:1.5px solid #ded6c8;border-radius:8px;padding:16px 18px;margin-bottom:14px;box-shadow:0 4px 14px rgba(45,35,25,0.04),inset 0 0 0 1px #fcfbfa;",
     cardGreenLeft: "border-left:5px solid #1e5c3c;",
     cardOchreLeft: "border-left:5px solid #8c3b1e;",
-    cardGoldLeft: "border-left:5px solid #8f5a13;",
+    cardGoldLeft: "border-left:5px solid #5c5449;",
     cardHeader: "display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;",
     badgeBase: "display:inline-flex;align-items:center;gap:4px;padding:2.5px 9px;border-radius:4px;font-size:11.5px;font-weight:800;",
     badgeGreen: "background:#e3f2e8;color:#144d2d;border:1.5px solid #a3d4b6;",
     badgeOchre: "background:#faede8;color:#7c2d12;border:1.5px solid #eec0b1;",
-    badgeGold: "background:#fdf5df;color:#78350f;border:1.5px solid #f2d184;",
+    badgeGold: "background:#efede6;color:#4a453e;border:1.5px solid #d5cfc2;",
     cardTitle: "text-decoration:underline;text-decoration-color:#dcd4c3;font-family:'Songti SC','Source Han Serif SC',serif;font-size:16px;font-weight:900;color:#5c2c16 !important;display:block;margin-bottom:10px;letter-spacing:0.2px;line-height:1.45;",
     cardAuthor: "font-size:11.5px;color:#5c5449;font-weight:600;",
     fieldDesc: "font-size:13px;color:#2b2623;line-height:1.65;margin-bottom:8px;",
     fieldValGreen: "font-size:13px;color:#144d2d;line-height:1.65;border-top:1px dashed #dcd4c3;padding-top:8px;font-weight:500;",
     fieldValOchre: "font-size:13px;color:#7c2d12;line-height:1.65;border-top:1px dashed #dcd4c3;padding-top:8px;font-weight:500;",
-    fieldValGold: "font-size:13px;color:#78350f;line-height:1.65;border-top:1px dashed #dcd4c3;padding-top:8px;font-weight:500;",
+    fieldValGold: "font-size:13px;color:#4a453e;line-height:1.65;border-top:1px dashed #dcd4c3;padding-top:8px;font-weight:500;",
     strongDark: "color:#1c1815;font-weight:800;",
 
     details: "background:#ffffff;border:1.5px solid #ded6c8;border-left:5px solid #a83226;border-radius:8px;margin-bottom:16px;overflow:hidden;box-shadow:0 4px 14px rgba(45,35,25,0.04),inset 0 0 0 1px #fcfbfa;",
@@ -63,7 +63,7 @@ const S = {
     sentWrap: "font-size:11.5px;color:#7d7265;",
     sentHeader: "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;",
     progressBar: "height:4px;background:#e5dfd3;border-radius:2px;overflow:hidden;margin-bottom:12px;",
-    progressFill: "height:100%;background:linear-gradient(90deg,#d4a359,#a83226);border-radius:2px;",
+    progressFill: "height:100%;background:linear-gradient(90deg,#8c8275,#a83226);border-radius:2px;",
     noiseDetails: "background:#f2ede2;border-radius:5px;padding:7px 12px;border:1.5px solid #ded6c8;",
     noiseSummary: "cursor:pointer;color:#6e6559;user-select:none;font-size:11px;"
 };
@@ -82,7 +82,7 @@ class LkongReporter {
         const sent = data.sentiment || { anxietyScore: 42, summary: '平稳' };
         const folded = data.foldedNoise || [];
 
-        // 1. 渲染官方7天精选卡片 (金色系 · 无则隐藏)
+        // 1. 渲染官方7天精选卡片 (墨石系 · 无则隐藏)
         let digestSectionHtml = '';
         if (digests.length > 0) {
             const digestCards = digests.map(d => {
@@ -119,10 +119,14 @@ class LkongReporter {
             const badge = isData ? S.badgeGreen : S.badgeOchre;
             const badgeText = isData ? '📊 核心数据复盘' : '💡 题材创作实战';
             const fieldVal = isData ? S.fieldValGreen : S.fieldValOchre;
+            const deletedTag = g.is_deleted ? '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-size:10px;font-weight:700;padding:1.5px 6px;border-radius:3px;margin-left:6px;vertical-align:middle;">⚠️ 原帖已删 · 本地快照留存</span>' : '';
             return `
                 <div style="${S.cardBase}${cardLeft}">
                     <div style="${S.cardHeader}">
-                        <span style="${S.badgeBase}${badge}">${badgeText}</span>
+                        <div>
+                            <span style="${S.badgeBase}${badge}">${badgeText}</span>
+                            ${deletedTag}
+                        </div>
                         <span style="${S.cardAuthor}">作者：${escapeHtml(g.author || '民间高人')} · ${g.replies || 0}回</span>
                     </div>
                     <a href="https://www.lkong.com/thread/${g.tid}" target="_blank" style="${S.cardTitle}">《${escapeHtml(g.title)}》</a>
@@ -131,33 +135,37 @@ class LkongReporter {
                 </div>`;
         }).join('');
 
-        // 3. 渲染吃瓜脉络折叠卡
-        const dramaCards = dramas.map(d => `
+        // 3. 渲染报业级吃瓜深度特稿与证据链折叠卡
+        const dramaCards = dramas.map(d => {
+            const briefHtml = d.brief ? `<div style="font-size:12.5px;color:#7c2d12;font-weight:700;margin-bottom:8px;line-height:1.5;background:#faede8;border-left:3.5px solid #a83226;padding:5px 9px;border-radius:3px;">📢 瓜情速览：${escapeHtml(d.brief)}</div>` : '';
+            return `
             <div style="${S.details}">
                 <details open>
                     <summary style="${S.summary}">
                         <span style="display:flex;align-items:center;">
-                            <span style="${S.melonBadge}">🔥 聚类大瓜</span>
+                            <span style="${S.melonBadge}">🔥 深度特稿</span>
                             <span style="${S.summaryTitle}">《${escapeHtml(d.eventName)}》</span>
                         </span>
                         <span style="font-size:11.5px;color:#a83226;font-weight:700;">展开证据链 (${d.threadCount}篇) ▾</span>
                     </summary>
                     <div style="${S.detailsBody}">
                         <div style="${S.disputeBox}">
-                            <div style="margin-bottom:4px;"><strong>💥 核心争议：</strong>${escapeHtml(d.coreDispute)}</div>
-                            <div><strong>⚖️ 涉及立场：</strong>${escapeHtml(d.stances)}</div>
+                            ${briefHtml}
+                            <div style="margin-bottom:6px;line-height:1.65;"><strong style="${S.strongDark}">💥 深度脉络：</strong>${escapeHtml(d.coreDispute)}</div>
+                            <div style="line-height:1.65;border-top:1px dashed #e8decb;padding-top:6px;margin-top:6px;"><strong style="${S.strongDark}">⚖️ 楼中交锋：</strong>${escapeHtml(d.stances)}</div>
                         </div>
                         <div style="${S.evidenceList}">
                             ${(d.threads || []).map((t, idx) => `
                             <div>
                                 ${idx + 1}. <a href="https://www.lkong.com/thread/${t.tid}" target="_blank" style="${S.evidenceLink}">《${escapeHtml(t.title)}》</a>
-                                ${t.hasImages ? '<span style="background:#f0e9dc;padding:1px 4px;border-radius:2px;font-size:10px;color:#85612c;">📷 含截图证据</span>' : ''}
+                                ${t.hasImages ? '<span style="background:#f0e9dc;padding:1px 4px;border-radius:2px;font-size:10px;color:#8c8275;">📷 含截图证据</span>' : ''}
                                 <span style="color:#8c8275;">(${t.replies}回)</span>
                             </div>`).join('')}
                         </div>
                     </div>
                 </details>
-            </div>`).join('');
+            </div>`;
+        }).join('');
 
         // 4. 组装全景模板 (0 style 标签 / 0 class · 双端一致渲染)
         return `
@@ -188,7 +196,7 @@ class LkongReporter {
     <div style="${S.hotBox}">
         <div style="${S.hotHeader}">
             <div style="${S.hotTitle}">
-                <span style="color:#c2410c;font-size:14px;">🔥</span> 今日全站热议榜 <span style="font-size:11px;font-weight:400;color:#9c9183;">/ Trending Topics</span>
+                <span style="color:#a83226;font-size:14px;">🔥</span> 今日全站热议榜 <span style="font-size:11px;font-weight:400;color:#9c9183;">/ Trending Topics</span>
             </div>
             <a href="https://www.lkong.com/forum/15" target="_blank" style="text-decoration:none;font-size:11px;color:#8c8275 !important;">查看更多热搜 &gt;</a>
         </div>

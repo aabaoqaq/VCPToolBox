@@ -51,7 +51,7 @@ class LkongStore {
             );
 
             CREATE TABLE IF NOT EXISTS posts (
-                pid INTEGER PRIMARY KEY,
+                pid TEXT PRIMARY KEY,
                 tid INTEGER,
                 lou INTEGER,
                 uid INTEGER,
@@ -90,7 +90,52 @@ class LkongStore {
             CREATE INDEX IF NOT EXISTS idx_digest_real_dateline ON digest_pool(real_dateline DESC);
         `);
 
+        this._migrateSchema();
         this._initDefaultNoise();
+    }
+
+    _migrateSchema() {
+        // 1. 迁移 threads 新字段
+        const columnsToAdd = [
+            'ALTER TABLE threads ADD COLUMN summary TEXT;',
+            'ALTER TABLE threads ADD COLUMN value TEXT;',
+            'ALTER TABLE threads ADD COLUMN is_deep_crawled INTEGER DEFAULT 0;',
+            'ALTER TABLE threads ADD COLUMN is_deleted INTEGER DEFAULT 0;'
+        ];
+        for (const sql of columnsToAdd) {
+            try {
+                this.db.exec(sql);
+            } catch (e) {
+                // 列已存在时安全忽略
+            }
+        }
+
+        // 2. 检查 posts 表 pid 是否为 TEXT (龙空 pid 是 UUID 字符串)
+        try {
+            const tableInfo = this.db.prepare('PRAGMA table_info(posts)').all();
+            const pidCol = tableInfo.find(c => c.name === 'pid');
+            if (pidCol && pidCol.type.toUpperCase() === 'INTEGER') {
+                // 仅在原空表类型不匹配时平滑重建
+                this.db.exec(`
+                    DROP TABLE IF EXISTS posts;
+                    CREATE TABLE posts (
+                        pid TEXT PRIMARY KEY,
+                        tid INTEGER,
+                        lou INTEGER,
+                        uid INTEGER,
+                        author_name TEXT,
+                        dateline INTEGER,
+                        content TEXT,
+                        images TEXT,
+                        score REAL DEFAULT 0,
+                        created_at INTEGER
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_posts_tid_lou ON posts(tid, lou ASC);
+                `);
+            }
+        } catch (e) {
+            console.error('[LkongStore] posts schema migration error:', e.message);
+        }
     }
 
     _initDefaultNoise() {
@@ -143,7 +188,7 @@ class LkongStore {
                     author_uid: item.author?.uid || 0,
                     author_name: item.author?.name || '',
                     dateline: item.dateline || 0,
-                    lastpost: item.lastpost || 0,
+                    lastpost: item.lastpost || item.dateline || Date.now(),
                     replies: item.replies || 0,
                     views: item.views || 0,
                     digest: item.digest ? 1 : 0,
@@ -162,6 +207,84 @@ class LkongStore {
 
     getThread(tid) {
         return this.db.prepare('SELECT * FROM threads WHERE tid = ?').get(tid);
+    }
+
+    // 更新帖子首楼快照与提纯摘要
+    updateThreadSnapshot(tid, snapshot) {
+        const stmt = this.db.prepare(`
+            UPDATE threads SET
+                first_content = COALESCE(@first_content, first_content),
+                images = COALESCE(@images, images),
+                summary = COALESCE(@summary, summary),
+                value = COALESCE(@value, value),
+                is_deep_crawled = 1,
+                is_deleted = COALESCE(@is_deleted, is_deleted)
+            WHERE tid = @tid
+        `);
+        return stmt.run({
+            tid,
+            first_content: snapshot.first_content !== undefined ? snapshot.first_content : null,
+            images: snapshot.images ? JSON.stringify(snapshot.images) : null,
+            summary: snapshot.summary !== undefined ? snapshot.summary : null,
+            value: snapshot.value !== undefined ? snapshot.value : null,
+            is_deleted: snapshot.is_deleted !== undefined ? (snapshot.is_deleted ? 1 : 0) : null
+        });
+    }
+
+    // 保存楼层数据（首楼及前排回帖）
+    savePosts(posts) {
+        if (!Array.isArray(posts) || posts.length === 0) return 0;
+        const stmt = this.db.prepare(`
+            INSERT INTO posts (
+                pid, tid, lou, uid, author_name, dateline, content, images, score, created_at
+            ) VALUES (
+                @pid, @tid, @lou, @uid, @author_name, @dateline, @content, @images, @score, @created_at
+            ) ON CONFLICT(pid) DO UPDATE SET
+                content = excluded.content,
+                images = excluded.images,
+                author_name = excluded.author_name,
+                score = excluded.score
+        `);
+
+        const now = Date.now();
+        const tx = this.db.transaction((items) => {
+            let count = 0;
+            for (const item of items) {
+                if (!item.pid) continue;
+                stmt.run({
+                    pid: item.pid,
+                    tid: item.tid,
+                    lou: item.lou || 1,
+                    uid: item.uid || 0,
+                    author_name: item.author_name || item.author || '',
+                    dateline: item.dateline || 0,
+                    content: item.content || '',
+                    images: JSON.stringify(item.images || []),
+                    score: item.score || 0,
+                    created_at: now
+                });
+                count++;
+            }
+            return count;
+        });
+
+        return tx(posts);
+    }
+
+    getPosts(tid, maxLou = 50) {
+        return this.db.prepare(`
+            SELECT * FROM posts 
+            WHERE tid = ? 
+            ORDER BY lou ASC 
+            LIMIT ?
+        `).all(tid, maxLou);
+    }
+
+    getThreadWithPosts(tid) {
+        const thread = this.getThread(tid);
+        if (!thread) return null;
+        const posts = this.getPosts(tid);
+        return { ...thread, posts };
     }
 
     getDailyIntels(limit = 30) {
@@ -233,24 +356,45 @@ class LkongStore {
         const digestThreshold = now - (7 * 86400 * 1000);       // 官方精选 7天
 
         const res = this.db.transaction(() => {
-            // 1. 清理普通不活跃帖（回复<30 且 lastpost 超过48h）
+            // 1. 清理普通不活跃帖（非精选、回复<30 且 lastpost 超过48h）
             const d1 = this.db.prepare(`
                 DELETE FROM threads
-                WHERE replies < 30 AND lastpost < ?
+                WHERE (digest IS NULL OR digest = 0) AND replies < 30 AND lastpost < ?
             `).run(normalThreshold);
 
-            // 2. 清理超期冷寂的高热帖（lastpost 超过7天）
+            // 2. 清理超期冷寂的高热帖（非精选且 lastpost 超过7天）
             const d2 = this.db.prepare(`
                 DELETE FROM threads
-                WHERE lastpost < ?
+                WHERE (digest IS NULL OR digest = 0) AND lastpost < ?
             `).run(dramaThreshold);
 
-            // 3. 将超过7天的旧精选标记为不展示
+            // 3. 将超过7天的旧精选标记为不展示，并物理清理 threads 中超期的精选帖
             const d3 = this.db.prepare(`
                 UPDATE digest_pool SET is_active = 0 WHERE real_dateline < ?
             `).run(digestThreshold);
 
-            return { prunedNormal: d1.changes, prunedDrama: d2.changes, deactiveDigest: d3.changes };
+            const dDigestThreads = this.db.prepare(`
+                DELETE FROM threads
+                WHERE digest = 1 AND (dateline < ? OR lastpost < ?)
+            `).run(digestThreshold, digestThreshold);
+
+            // 4. 级联物理清理已淘汰帖子的所有楼层数据，放行 threads 存活帖以及 digest_pool 活跃精选
+            const dPosts = this.db.prepare(`
+                DELETE FROM posts
+                WHERE tid NOT IN (
+                    SELECT tid FROM threads
+                    UNION
+                    SELECT tid FROM digest_pool WHERE is_active = 1
+                )
+            `).run();
+
+            return { 
+                prunedNormal: d1.changes, 
+                prunedDrama: d2.changes, 
+                deactiveDigest: d3.changes,
+                prunedDigestThreads: dDigestThreads.changes,
+                prunedPosts: dPosts.changes 
+            };
         })();
 
         return res;

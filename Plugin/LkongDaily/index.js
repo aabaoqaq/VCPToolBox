@@ -58,11 +58,20 @@ async function main() {
 
         const activeDigests = store.getActiveDigests(7);
         const recentThreads = store.db.prepare('SELECT * FROM threads WHERE fid = 15 ORDER BY lastpost DESC LIMIT 250').all();
-        const communityGolds = LkongMiner.extractCommunityGold(recentThreads);
+
+        // 日报上榜帖100%精准下潜持久化 (已缓存则0延迟)
+        const targetTids = LkongMiner.getTargetTidsForReport(recentThreads);
+
+        try {
+            await crawler.deepCrawlThreads(targetTids, { delayMs: 400 });
+        } catch (e) {}
+
+        const refreshedThreads = store.db.prepare('SELECT * FROM threads WHERE fid = 15 ORDER BY lastpost DESC LIMIT 250').all();
+        const communityGolds = LkongMiner.extractCommunityGold(refreshedThreads, store);
         const noiseWords = store.getNoiseWords();
-        const dramas = LkongMiner.clusterDramas(recentThreads, noiseWords);
-        const sentiment = LkongMiner.calculateSentiment(recentThreads);
-        const foldedNoise = recentThreads.filter(t => t.category === 'noise');
+        const dramas = LkongMiner.clusterDramas(refreshedThreads, noiseWords, store);
+        const sentiment = LkongMiner.calculateSentiment(refreshedThreads);
+        const foldedNoise = refreshedThreads.filter(t => t.category === 'noise');
 
         const reportHtml = LkongReporter.formatHtmlReport({
             hotThreads,

@@ -10,7 +10,7 @@
     "type": "nodejs",
     "command": "node index.js"
   },
-  "signatureNonce": "20261005_v2_release",
+  "signatureNonce": "20261008_v2_2_deep_persist",
   "refreshIntervalCron": "0 */2 * * *",
   "communication": {
     "protocol": "stdio",
