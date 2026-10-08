@@ -1,0 +1,27 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "LkongDaily",
+  "version": "1.0.0",
+  "displayName": "龙空网文江湖日报静态占位符",
+  "description": "为具备 {{VCPLkongDaily}} 占位符的指定 Agent 提供龙空论坛网文江湖每日情报与开机单行预热状态。日常默认注入单行状态，询问'龙空今天怎样'时语义自动展开四分区全景日报。",
+  "author": "Nova & Kerr & 叶",
+  "pluginType": "static",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node index.js"
+  },
+  "signatureNonce": "20261005_v2_release",
+  "refreshIntervalCron": "0 */2 * * *",
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "capabilities": {
+    "systemPromptPlaceholders": [
+      {
+        "placeholder": "{{VCPLkongDaily}}",
+        "description": "龙空论坛网文江湖每日情报与开机单行预热状态占位符。"
+      }
+    ]
+  }
+}

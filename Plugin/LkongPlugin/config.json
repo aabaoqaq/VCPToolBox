@@ -1,0 +1,6 @@
+{
+  "apiBase": "https://api.lkong.com/api",
+  "cookie": "EGG_SESS=EM0T_Wvisfo0yl_uPGWesne9WXofz14icSF_2cjcCujj9w--grLGJsclDLrMqnfIOlHylxxh-yXQ7fLk2roTKxSvUYJomTPtHiztnjYcE8BCmGDNQWG7_yqEnx0rDmljfjI6Vs19V2mEefTQvBDh3b2kIPfuUFN_46ux60v3_Zrs2t8bf8j9-pS5X9rs1Pb-; Hm_lvt_08d61b09ba0306dd35d682cf285eb4e5=1790313944,1790421339,1790656681,1791120163; HMACCOUNT=82C0AA9FA1B7406E; Hm_lpvt_08d61b09ba0306dd35d682cf285eb4e5=1791120175",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.95 Safari/537.36",
+  "defaultFid": 15
+}

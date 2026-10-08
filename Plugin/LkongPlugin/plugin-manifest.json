@@ -1,0 +1,26 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "LkongPlugin",
+  "version": "2.0.0",
+  "displayName": "龙空网文情报雷达 (LkongPlugin v2.0 水墨旗舰版)",
+  "description": "专为网文作者定制的龙空情报中枢。支持 glThreads 原生热榜实时直取、7天真实发帖时间精选校验防诈、补课窗口期民间好帖全量淘金、吃瓜同类项归并与证据链原生折叠，并以高质感书卷水墨 UI 渲染全景日报。",
+  "author": "Nova & Kerr & 叶",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node index.js"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 60000
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "LkongPlugin",
+        "description": "龙空网文雷达旗舰中枢。\n指令列表 (command):\n- get_status: 获取单行系统占位状态(离线时长/积压待阅干货/Cookie有效性)。\n- catch_up: 执行开机增量补课(基于tid游标与3天/300帖上限)。\n- expand_daily: 主人询问'龙空今天怎样'时调用，补课并生成四分区完整日报(金子干货+楼中黄金+行业情报+情绪温度计+折叠审计区)。\n- get_thread: 深度读取帖子所有楼层与Slate正文，支持 cache_images: true 破除防盗链安全下载图片到本地。\n- archive_to_knowledge: 对指定干货帖执行抢救式Markdown落盘并返回言叶知识库切片格式。\n- test_auth: 检查账号登录凭据与网络可用性。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Kerr「末」,\ntool_name:「始」LkongPlugin「末」,\ncommand:「始」expand_daily「末」,\nfid:「始」15「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}
