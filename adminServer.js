@@ -91,6 +91,7 @@ const adminAuth = (req, res, next) => {
   if (clientIp && clientIp.substr(0, 7) === "::ffff:") {
     clientIp = clientIp.substr(7);
   }
+  const isLocalhost = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === 'localhost';
 
   // 检查管理员凭据是否已配置
   if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
@@ -110,9 +111,9 @@ const adminAuth = (req, res, next) => {
       .send("<h1>503</h1><p>Admin credentials not configured.</p>");
   }
 
-  // 检查 IP 是否被临时封禁
+  // 检查 IP 是否被临时封禁（本机回环地址豁免）
   const blockInfo = tempBlocks.get(clientIp);
-  if (blockInfo && Date.now() < blockInfo.expires && !isReadOnlyPath) {
+  if (blockInfo && Date.now() < blockInfo.expires && !isReadOnlyPath && !isLocalhost) {
     const timeLeft = Math.ceil((blockInfo.expires - Date.now()) / 1000 / 60);
     res.setHeader(
       "Retry-After",
@@ -161,7 +162,7 @@ const adminAuth = (req, res, next) => {
     // 当 credentials 为 null 时（如 cookie 过期、用户登出后面板后台轮询），
     // 不计入失败次数，避免面板挂着时 cookie 过期导致立即封禁 IP
     const isActiveLoginAttempt = !!credentials;
-    if (clientIp && !isReadOnlyPath && isActiveLoginAttempt) {
+    if (clientIp && !isReadOnlyPath && isActiveLoginAttempt && !isLocalhost) {
       const now = Date.now();
       let attemptInfo = loginAttempts.get(clientIp) || {
         count: 0,
@@ -178,8 +179,8 @@ const adminAuth = (req, res, next) => {
         loginAttempts.set(clientIp, attemptInfo);
       }
     }
-    // 🌟 防DDoS：无凭据访问独立计数，阈值更宽松（不影响正常 cookie 过期场景）
-    else if (clientIp && !isReadOnlyPath) {
+    // 🌟 防DDoS：无凭据访问独立计数，阈值更宽松（本机回环地址豁免）
+    else if (clientIp && !isReadOnlyPath && !isLocalhost) {
       const now = Date.now();
       let accessInfo = noCredentialAccess.get(clientIp) || {
         count: 0,
